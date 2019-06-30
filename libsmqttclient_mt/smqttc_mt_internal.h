@@ -27,10 +27,7 @@ struct smqtt_mt_client
     uint16_t            publish_packet_id;
     uint16_t            subscribe_packet_id;
     uint16_t            unsubscribe_packet_id;
-    /**
-     * Underlying server connection
-     */
-    server_t *          server;
+
 
     session_state_t *session_state;
 };

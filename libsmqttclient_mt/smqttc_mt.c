@@ -1,9 +1,14 @@
 
+
+
 #include <stdio.h>
 
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+
+#include <time.h>
+#include <sys/select.h>
 
 #include "smqttc_mt.h"
 #include "smqttc_mt_internal.h"
@@ -32,13 +37,14 @@ smqtt_mt_connect_internal(server_mode_t mode,
                        const char *will_message,
                        smqtt_mt_client_t **client)
 {
+    server_t *server = NULL;
     smqtt_mt_status_t stat;
     smqtt_mt_client_t *connection =
             (smqtt_mt_client_t *) malloc(sizeof(smqtt_mt_client_t));
     if (connection != 0) {
 
         if (mode == REMOTE_SERVER) {
-            connection->server = create_network_server();
+            server = create_network_server();
         } else {
             // local server
         }
@@ -59,7 +65,7 @@ smqtt_mt_connect_internal(server_mode_t mode,
         // create the stuff we need to connect
         connection->connected = false;
 
-        stat = server_connect(connection->server,
+        stat = server_connect(server,
                                connection->hostname, connection->port, 100);
         if (stat != SMQTT_MT_OK) {
             fprintf(stderr, "failed to connect: to server socket\n");
@@ -76,14 +82,14 @@ smqtt_mt_connect_internal(server_mode_t mode,
                                      last_will_and_testament, will_qos, will_retain,
                                      will_topic, will_message);
 
-        stat = server_send(connection->server, send_buffer, send_len);
+        stat = server_send(server, send_buffer, send_len);
         if (stat != SMQTT_MT_OK) {
-            free(connection->server);
+            free(server);
             free(connection);
             return stat;
         }
 
-        long sz = server_receive(connection->server,
+        long sz = server_receive(server,
                                  receive_buffer, sizeof(receive_buffer));
         if (sz > 0) {
             response_t *resp = deserialize_response(receive_buffer, sz);
@@ -113,8 +119,8 @@ smqtt_mt_connect_internal(server_mode_t mode,
                         default:
                             break;
                     }
-                    server_disconnect(connection->server);
-                    free(connection->server);
+                    server_disconnect(server);
+                    free(server);
                     free(connection);
                     free(resp);
                     return status;
@@ -124,8 +130,8 @@ smqtt_mt_connect_internal(server_mode_t mode,
                 }
             }
         } else {
-            server_disconnect(connection->server);
-            free(connection->server);
+            server_disconnect(server);
+            free(server);
             free(connection);
             return SMQTT_MT_NOMESSAGE;
         }
@@ -135,7 +141,7 @@ smqtt_mt_connect_internal(server_mode_t mode,
 
     }
 
-    connection->session_state = start_session_thread(10, 1024);
+    connection->session_state = start_session_thread(10, 1024, server);
 
 
     *client = connection;
@@ -164,7 +170,7 @@ smqtt_mt_connect(const char *server_ip,
 }
 
 smqtt_mt_status_t
-smqtt_mt_ping(smqtt_mt_client_t *client)
+smqtt_mt_ping(smqtt_mt_client_t *client, uint16_t timeout_msec)
 {
     if (!client->connected) {
         return SMQTT_NOT_CONNECTED;
@@ -179,10 +185,19 @@ smqtt_mt_ping(smqtt_mt_client_t *client)
                 make_pingreq_message(buffer, BUFFER_SIZE);
 
         smqtt_mt_status_t stat =
-                server_send(client->server, send_buffer, actual_len);
-        if (stat != SMQTT_OK) {
+                server_send(client->session_state->server, send_buffer, actual_len);
+        struct timeval tv;
+        tv.tv_sec = 1;
+        tv.tv_usec = timeout_msec * 1000;
+        select(0, NULL, NULL, NULL, &tv);
+        tv.tv_sec = 1;
+        tv.tv_usec = timeout_msec * 1000;
+        fprintf(stderr, "message sent\n");
+        if (stat != SMQTT_MT_OK) {
             return stat;
         }
+
+        select(0, NULL, NULL, NULL, &tv);
 #if 0
         long sz = server_receive(client->server,
                                  receive_buffer, sizeof(receive_buffer));  // wait for PINGACK
@@ -203,7 +218,7 @@ smqtt_mt_ping(smqtt_mt_client_t *client)
 #endif
     }
 
-    return SMQTT_OK;
+    return SMQTT_MT_OK;
 }
 
 smqtt_mt_status_t
@@ -213,10 +228,10 @@ smqtt_mt_disconnect(smqtt_mt_client_t *client)
 
     size_t actual_len = make_disconnect_message(send_buffer, BUFFER_SIZE);
     smqtt_mt_status_t stat =
-            server_send(client->server, send_buffer, actual_len);
+            server_send(client->session_state->server, send_buffer, actual_len);
 
     // TODO: this should block for a while to be courteous
-    server_disconnect(client->server);
+    server_disconnect(client->session_state->server);
 
     // TODO: maybe a force argument, but otherwise exit without
     // TODO: joining the thread if there was a problem

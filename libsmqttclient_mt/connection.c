@@ -8,17 +8,23 @@
 #include "server.h"
 #include "connection.h"
 
+#define BUFFER_SIZE ((size_t)1024)
+static uint8_t receive_buffer[BUFFER_SIZE];
+
 void *
 session_thread_loop(void *);
 
 session_state_t *
-start_session_thread(uint16_t buffer_count, size_t buffer_size) {
+start_session_thread(
+        uint16_t buffer_count, size_t buffer_size,
+        server_t *server) {
 
 
     session_state_t *session_state = malloc(sizeof(session_state_t));
     session_state->buffer_count = buffer_count;
     session_state->buffer_size = buffer_size;
     session_state->ready_to_disconnect = false;
+    session_state->server = server;
 
     pthread_mutex_init(&session_state->thread_mutex, NULL);
     pthread_cond_init(&session_state->thread_loop_state_change, NULL);
@@ -75,17 +81,15 @@ session_thread_loop(void *arg)
         bool ready = session_state->ready_to_disconnect;
         status = pthread_mutex_unlock(&session_state->thread_mutex);
         if (ready) break;
-        // TODO: pick a buffer and use it
-        /*
-        long sz = server_receive(connection->server,
-        receive_buffer, sizeof(receive_buffer));
 
+        long sz = server_receive(session_state->server,
+                receive_buffer, sizeof(receive_buffer));
         if (sz > 0) {
-
+            fprintf(stderr, "got a message\n");
         } else {
-        break;
+            fprintf(stderr, "no message\n");
         }
-        */
+
     }
 
     return NULL;

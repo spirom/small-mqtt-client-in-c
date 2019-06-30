@@ -42,7 +42,7 @@ smqtt_mt_connect(const char *server_ip,
               smqtt_mt_client_t **client);
 
 smqtt_mt_status_t
-smqtt_mt_ping(smqtt_mt_client_t *client);
+smqtt_mt_ping(smqtt_mt_client_t *client, uint16_t timeout_msec);
 
 smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client);

@@ -114,11 +114,15 @@ network_receive(server_t *server, char *buffer, size_t length)
 
     long sz = recv(impl->socket, buffer, 2, 0);
     if (sz < 0) {
+#if 0
         printf("\nSocket recv returned %ld, errno %d %s\n",sz,errno, strerror(errno));
         close(impl->socket);
         free(impl);
         server->impl = NULL;
         return -1;
+#else
+        return 0;
+#endif
     }
 
     if (trace) {
@@ -131,11 +135,15 @@ network_receive(server_t *server, char *buffer, size_t length)
     if (remaining > 0) {
         sz = recv(impl->socket, buffer + 2, remaining, 0);
         if (sz < 0) {
+#if 0
             printf("\nSocket recv returned %ld, errno %d %s\n",sz,errno, strerror(errno));
             close(impl->socket);
             free(impl);
             server->impl = NULL;
             return -1;
+#else
+            return 0;
+#endif
         }
         long length = sz + consumed;
         if (trace) {

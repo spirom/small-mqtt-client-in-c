@@ -18,6 +18,10 @@ typedef struct {
     pthread_mutex_t thread_mutex;
     pthread_cond_t thread_loop_state_change;
     bool ready_to_disconnect;
+    /**
+     * Underlying server connection
+     */
+    server_t *          server;
 } session_state_t;
 
 static void *
@@ -28,7 +32,7 @@ session_thread_loop(void *);
  * @return
  */
 extern session_state_t *
-start_session_thread(uint16_t buffer_count, size_t buffer_size);
+start_session_thread(uint16_t buffer_count, size_t buffer_size, server_t *server);
 
 /**
  * Also frees buffer pool
