@@ -1,4 +1,4 @@
 
 
-TEST_DEF(test_connect_disconnect_v3)
+//TEST_DEF(test_connect_disconnect_v3)
 TEST_DEF(test_ping_v3)

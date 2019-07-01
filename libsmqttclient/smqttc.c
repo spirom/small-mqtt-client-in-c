@@ -535,7 +535,7 @@ smqtt_disconnect(smqtt_client_t *client)
 }
 
 /**
- * For testring only: drop the connection without send a disconnect message
+ * For testing only: drop the connection without send a disconnect message
  * @param broker
  */
 smqtt_status_t

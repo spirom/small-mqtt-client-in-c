@@ -13,7 +13,7 @@
 #include "smqttc.h"
 #include "server.h"
 
-static bool trace = false;
+static bool trace = true;
 
 smqtt_status_t
 network_connect(server_t *server,
@@ -91,7 +91,8 @@ network_send(server_t *server, char *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
     if (trace) {
-        fprintf(stderr, "send: fixed header %x %x\n", buffer[0] & 0xff, buffer[1] & 0xff);
+        fprintf(stderr, "send <<%d>>: fixed header %x %x\n",
+                impl->socket, buffer[0] & 0xff, buffer[1] & 0xff);
         for (int i = 2; i < length; i++) {
             fprintf(stderr, "%2x ", buffer[i] & 0xff);
             if ((i == length - 1) || ((i - 1) % 10 == 0)) {
@@ -112,6 +113,9 @@ network_receive(server_t *server, char *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
 
+    if (trace) {
+        fprintf(stderr, "Receiving header <<%d>>\n", impl->socket);
+    }
     long sz = recv(impl->socket, buffer, 2, 0);
     if (sz < 0) {
 #if 0
@@ -126,13 +130,16 @@ network_receive(server_t *server, char *buffer, size_t length)
     }
 
     if (trace) {
-        fprintf(stderr, "receive: packet start %x %x\n", buffer[0] & 0xff, buffer[1] & 0xff);
+        fprintf(stderr, "received header: packet start %x %x\n", buffer[0] & 0xff, buffer[1] & 0xff);
     }
 
     size_t remaining = buffer[1];
     size_t consumed = 2;
 
     if (remaining > 0) {
+        if (trace) {
+            fprintf(stderr, "Receiving body <<%d>>\n", impl->socket);
+        }
         sz = recv(impl->socket, buffer + 2, remaining, 0);
         if (sz < 0) {
 #if 0
@@ -147,6 +154,7 @@ network_receive(server_t *server, char *buffer, size_t length)
         }
         long length = sz + consumed;
         if (trace) {
+            fprintf(stderr, "Received:\n");
             for (int i = 2; i < length; i++) {
                 fprintf(stderr, "%2x ", buffer[i] & 0xff);
                 if ((i == length - 1) || ((i - 1) % 10 == 0)) {
@@ -157,6 +165,9 @@ network_receive(server_t *server, char *buffer, size_t length)
         return length;
     } else {
         // trivial packet
+        if (trace) {
+            fprintf(stderr, "(no body expected)\n");
+        }
         return consumed; // hopefully 2
     }
 }
