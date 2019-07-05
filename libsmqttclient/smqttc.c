@@ -213,7 +213,7 @@ smqtt_ping(smqtt_client_t *client)
 
         response_t *resp = deserialize_response(receive_buffer, sz);
         if (resp == 0) {
-            puts("failed to parse publish response");
+            puts("failed to parse ping response");
             return SMQTT_BAD_MESSAGE;
         } else if (resp->type == PINGRESP) {
             free(resp);

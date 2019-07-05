@@ -170,7 +170,10 @@ smqtt_mt_connect(const char *server_ip,
 }
 
 smqtt_mt_status_t
-smqtt_mt_ping(smqtt_mt_client_t *client, uint16_t timeout_msec)
+smqtt_mt_ping(smqtt_mt_client_t *client,
+        uint16_t timeout_msec,
+        void (*callback)(bool, void *),
+        void *cb_context)
 {
     if (!client->connected) {
         return SMQTT_NOT_CONNECTED;
@@ -184,38 +187,21 @@ smqtt_mt_ping(smqtt_mt_client_t *client, uint16_t timeout_msec)
         size_t actual_len =
                 make_pingreq_message(buffer, BUFFER_SIZE);
 
+        waiting_t *waiting = (waiting_t *)malloc(sizeof(waiting_t));
+        waiting->type = PINGRESP;
+        waiting->callback = callback;
+        waiting->cb_context = cb_context;
+        enqueue_waiting(client->session_state, waiting);
+
         smqtt_mt_status_t stat =
-                server_send(client->session_state->server, send_buffer, actual_len);
-        struct timeval tv;
-        tv.tv_sec = 1;
-        tv.tv_usec = timeout_msec * 1000;
-        select(0, NULL, NULL, NULL, &tv);
-        tv.tv_sec = 1;
-        tv.tv_usec = timeout_msec * 1000;
-        fprintf(stderr, "message sent\n");
+                enqueue_slot_for_send(client->session_state, slot, actual_len);
+        fprintf(stderr, "cli: message enqueued\n");
+
+
         if (stat != SMQTT_MT_OK) {
             return stat;
         }
 
-        select(0, NULL, NULL, NULL, &tv);
-#if 0
-        long sz = server_receive(client->server,
-                                 receive_buffer, sizeof(receive_buffer));  // wait for PINGACK
-
-        response_t *resp = deserialize_response(receive_buffer, sz);
-        if (resp == 0) {
-            puts("failed to parse publish response");
-            return SMQTT_MT_BAD_MESSAGE;
-        } else if (resp->type == PINGRESP) {
-            free(resp);
-        }
-        else
-        {
-            puts("failed to ping");
-            free(resp);
-            return SMQTT_UNEXPECTED;
-        }
-#endif
     }
 
     return SMQTT_MT_OK;
@@ -224,11 +210,24 @@ smqtt_mt_ping(smqtt_mt_client_t *client, uint16_t timeout_msec)
 smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client)
 {
-    fprintf(stderr, "disconnetcing\n");
+
+#if 1
+    struct timeval tv;
+    fprintf(stderr, "cli: sleeping 1\n");
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    select(0, NULL, NULL, NULL, &tv);
+#endif
+    fprintf(stderr, "cli: disconnecting\n");
     signal_disconnect(client->session_state);
 
+    smqtt_mt_status_t stat = join_session_thread(client->session_state);
+    if (stat != SMQTT_MT_OK) {
+        return stat;
+    }
+
     size_t actual_len = make_disconnect_message(send_buffer, BUFFER_SIZE);
-    smqtt_mt_status_t stat =
+    stat =
             server_send(client->session_state->server, send_buffer, actual_len);
 
     // TODO: this should block for a while to be courteous
@@ -240,10 +239,7 @@ smqtt_mt_disconnect(smqtt_mt_client_t *client)
         return stat;
     }
 
-    stat = join_session_thread(client->session_state);
-    if (stat != SMQTT_MT_OK) {
-        return stat;
-    }
+
 
     return SMQTT_MT_OK;
 }

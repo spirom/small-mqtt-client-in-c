@@ -31,6 +31,7 @@ network_disconnect(struct server_t *server);
 typedef struct server_impl_t {
     int                 socket;
     struct sockaddr_in  socket_address;
+    fd_set              read_fds;
 } server_impl_t;
 
 int SetSocketTimeout(int connectSocket, int milliseconds)
@@ -59,9 +60,12 @@ smqtt_status_t
 network_connect(server_t *server,
         char *hostname, uint16_t port, uint16_t timeout_msec)
 {
+    if (trace) {
+        fprintf(stderr, "net: trying to connect\n");
+    }
     server_impl_t *impl = (server_impl_t *)server->impl;
     if ((impl->socket = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-        fprintf(stderr,"failed to connect: could not create socket\n");
+        fprintf(stderr,"net: could not create socket\n");
         free(impl);
         server->impl= NULL;
         return 1;
@@ -73,13 +77,16 @@ network_connect(server_t *server,
     // connect
     if ((connect(impl->socket, (struct sockaddr *)&impl->socket_address,
             sizeof(impl->socket_address))) < 0) {
-        fprintf(stderr,"failed to connect: to server socket\n");
+        fprintf(stderr,"net: failed to connect to server socket\n");
         free(impl);
         server->impl = NULL;
         return SMQTT_SOCKET;
     }
 
     if (timeout_msec != 0) {
+        if (trace) {
+            fprintf(stderr, "net: setting a socket timeout\n");
+        }
         SetSocketTimeout(impl->socket, timeout_msec);
     }
 
@@ -91,8 +98,9 @@ network_send(server_t *server, char *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
     if (trace) {
-        fprintf(stderr, "send <<%d>>: fixed header %x %x\n",
-                impl->socket, buffer[0] & 0xff, buffer[1] & 0xff);
+        fprintf(stderr, "net: send <<%d>> length=%lu: fixed header %x %x\n",
+                impl->socket, length,
+                buffer[0] & 0xff, buffer[1] & 0xff);
         for (int i = 2; i < length; i++) {
             fprintf(stderr, "%2x ", buffer[i] & 0xff);
             if ((i == length - 1) || ((i - 1) % 10 == 0)) {
@@ -101,9 +109,15 @@ network_send(server_t *server, char *buffer, size_t length)
         }
     }
     if (send(impl->socket, buffer, length, 0) < length) {
+        if (trace) {
+            fprintf(stderr, "net: send failed\n");
+        }
         free(impl);
         server->impl = NULL;
         return SMQTT_SOCKET;
+    }
+    if (trace) {
+        fprintf(stderr, "net: send succeeded\n");
     }
     return SMQTT_OK;
 }
@@ -113,8 +127,28 @@ network_receive(server_t *server, char *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
 
+    struct timeval tv;
+    fprintf(stderr, "cli: sleeping 1\n");
+    tv.tv_sec = 0;
+    tv.tv_usec = 1000;
+
+    FD_ZERO(&impl->read_fds);
+    FD_SET(impl->socket, &impl->read_fds);
     if (trace) {
-        fprintf(stderr, "Receiving header <<%d>>\n", impl->socket);
+        fprintf(stderr, "net: about to select\n");
+    }
+    int ret = select(impl->socket+1, &impl->read_fds, NULL, NULL, &tv);
+    if (ret < 0) {
+        fprintf(stderr, "net: select failed\n");
+        return 0;
+    } else {
+        if (trace) {
+            fprintf(stderr, "net: out of select\n");
+        }
+    }
+
+    if (trace) {
+        fprintf(stderr, "net: Receiving header <<%d>>\n", impl->socket);
     }
     long sz = recv(impl->socket, buffer, 2, 0);
     if (sz < 0) {
@@ -130,7 +164,7 @@ network_receive(server_t *server, char *buffer, size_t length)
     }
 
     if (trace) {
-        fprintf(stderr, "received header: packet start %x %x\n", buffer[0] & 0xff, buffer[1] & 0xff);
+        fprintf(stderr, "net: received header: packet start %x %x\n", buffer[0] & 0xff, buffer[1] & 0xff);
     }
 
     size_t remaining = buffer[1];
@@ -138,7 +172,7 @@ network_receive(server_t *server, char *buffer, size_t length)
 
     if (remaining > 0) {
         if (trace) {
-            fprintf(stderr, "Receiving body <<%d>>\n", impl->socket);
+            fprintf(stderr, "net: Receiving body <<%d>>\n", impl->socket);
         }
         sz = recv(impl->socket, buffer + 2, remaining, 0);
         if (sz < 0) {
@@ -154,7 +188,7 @@ network_receive(server_t *server, char *buffer, size_t length)
         }
         long length = sz + consumed;
         if (trace) {
-            fprintf(stderr, "Received:\n");
+            fprintf(stderr, "net: Received:\n");
             for (int i = 2; i < length; i++) {
                 fprintf(stderr, "%2x ", buffer[i] & 0xff);
                 if ((i == length - 1) || ((i - 1) % 10 == 0)) {
@@ -166,7 +200,7 @@ network_receive(server_t *server, char *buffer, size_t length)
     } else {
         // trivial packet
         if (trace) {
-            fprintf(stderr, "(no body expected)\n");
+            fprintf(stderr, "net: (no body expected)\n");
         }
         return consumed; // hopefully 2
     }
@@ -176,7 +210,9 @@ smqtt_status_t
 network_disconnect(server_t *server)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
-
+    if (trace) {
+        fprintf(stderr, "net: disconnected\n");
+    }
     close(impl->socket);
     free(impl);
     server->impl = NULL;
