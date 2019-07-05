@@ -1,15 +1,10 @@
 
 # TODO
 
-* test does multiple pings
-* no extra sleep needed
-* Networking status codes
 * proper logging API
 
 * special send and receive queues
 * deal with memory ownership issues
-
-
 
 * message types
     * publish

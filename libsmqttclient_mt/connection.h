@@ -38,6 +38,7 @@ typedef struct {
 typedef struct {
     slot_index_t buffer_count;
     size_t buffer_size;
+    uint8_t *receive_buffer;
     buffer_slot_t *buffer_slots;
     pthread_t session_thread;
     pthread_mutex_t thread_mutex;
@@ -47,6 +48,7 @@ typedef struct {
     queue_t free_queue;
     queue_t send_queue;
     queue_t ack_queue;
+
     /**
      * Underlying server connection
      */
@@ -54,6 +56,8 @@ typedef struct {
 } session_state_t;
 
 
+smqtt_mt_status_t
+status_from_net(smqtt_net_status_t stat);
 
 static void *
 session_thread_loop(void *);
@@ -88,7 +92,7 @@ extern smqtt_mt_status_t
 enqueue_slot_for_send(session_state_t *session_state,
                       slot_index_t slot, uint16_t length);
 
-extern smqtt_status_t
+extern smqtt_mt_status_t
 enqueue_waiting(session_state_t *session_state, waiting_t *waiting);
 
 extern int

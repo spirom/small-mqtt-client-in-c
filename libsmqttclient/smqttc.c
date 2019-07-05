@@ -44,6 +44,17 @@ struct smqtt_client
     server_t *          server;
 };
 
+static smqtt_status_t
+status_from_net(smqtt_net_status_t stat)
+{
+    switch (stat) {
+        case SMQTT_NET_OK:
+            return SMQTT_OK;
+        default:
+            return SMQTT_SOCKET;
+    }
+}
+
 #define BUFFER_SIZE ((size_t)1024)
 uint8_t send_buffer[BUFFER_SIZE];
 uint8_t receive_buffer[BUFFER_SIZE];
@@ -91,8 +102,11 @@ smqtt_connect_internal(server_mode_t mode,
         connection->connected = false;
 
         smqtt_status_t stat =
-                server_connect(connection->server,
-                        connection->hostname, connection->port, 30000);
+                status_from_net(
+                        server_connect(
+                                connection->server,
+                                connection->hostname,
+                                connection->port, 30000));
         if (stat != SMQTT_OK) {
             fprintf(stderr, "failed to connect: to server socket\n");
             free(connection);
@@ -108,7 +122,8 @@ smqtt_connect_internal(server_mode_t mode,
                         last_will_and_testament, will_qos, will_retain,
                         will_topic, will_message);
 
-        stat = server_send(connection->server, send_buffer, send_len);
+        stat = status_from_net(
+                server_send(connection->server, send_buffer, send_len));
         if (stat != SMQTT_OK) {
             free(connection->server);
             free(connection);
@@ -203,7 +218,8 @@ smqtt_ping(smqtt_client_t *client)
                 make_pingreq_message(send_buffer, BUFFER_SIZE);
 
         smqtt_status_t stat =
-                server_send(client->server, send_buffer, actual_len);
+                status_from_net(
+                        server_send(client->server, send_buffer, actual_len));
         if (stat != SMQTT_OK) {
             return stat;
         }
@@ -243,7 +259,8 @@ smqtt_subscribe(smqtt_client_t *client,
             make_subscribe_message(send_buffer, BUFFER_SIZE,
                                  client->subscribe_packet_id, topics, qoss);
 
-    smqtt_status_t stat = server_send(client->server, send_buffer, actual_len);
+    smqtt_status_t stat = status_from_net(
+            server_send(client->server, send_buffer, actual_len));
     if (stat != SMQTT_OK) {
         puts("failed to send subscribe message");
 		return -1;
@@ -285,7 +302,9 @@ smqtt_unsubscribe(smqtt_client_t *client, const char **topics)
             make_unsubscribe_message(send_buffer, BUFFER_SIZE,
                                    client->unsubscribe_packet_id, topics);
 
-    smqtt_status_t stat = server_send(client->server, send_buffer, actual_len);
+    smqtt_status_t stat =
+            status_from_net(
+                    server_send(client->server, send_buffer, actual_len));
     if (stat != SMQTT_OK) {
         puts("failed to send subscribe message");
         return stat;
@@ -342,8 +361,9 @@ smqtt_get_next_message(smqtt_client_t *client,
                 size_t actual_len =
                         make_puback_message(send_buffer, BUFFER_SIZE,
                                             resp->body.publish_data.packet_id);
-                smqtt_status_t stat = server_send(client->server,
-                        send_buffer, actual_len);
+                smqtt_status_t stat =
+                        status_from_net(
+                                server_send(client->server, send_buffer, actual_len));
                 if (stat != SMQTT_OK) {
                     puts("failed to PUBACK");
                     free(resp);
@@ -356,8 +376,8 @@ smqtt_get_next_message(smqtt_client_t *client,
                 size_t actual_len =
                         make_pubrec_message(send_buffer, BUFFER_SIZE, packet_id);
 
-                smqtt_status_t stat = server_send(client->server,
-                        send_buffer, actual_len);
+                smqtt_status_t stat = status_from_net(
+                        server_send(client->server, send_buffer, actual_len));
                 if (stat != SMQTT_OK) {
                     puts("failed to PUBREC");
                     free(resp);
@@ -376,8 +396,10 @@ smqtt_get_next_message(smqtt_client_t *client,
                         actual_len =
                                 make_pubcomp_message(send_buffer, BUFFER_SIZE,
                                                     resp->body.pubrel_data.packet_id);
-                        smqtt_status_t stat = server_send(client->server,
-                                send_buffer, actual_len);
+                        smqtt_status_t stat =
+                                status_from_net(
+                                        server_send(client->server,
+                                                send_buffer, actual_len));
                         if (stat != SMQTT_OK) {
                             puts("failed to PUBCOMP");
                             free(resp);
@@ -427,7 +449,7 @@ smqtt_publish(smqtt_client_t *client,
                         client->publish_packet_id, qos, retain, msg);
 
         smqtt_status_t stat =
-                server_send(client->server, send_buffer, actual_len);
+                status_from_net(server_send(client->server, send_buffer, actual_len));
         if (stat != SMQTT_OK) {
             return stat;
         }
@@ -440,7 +462,7 @@ smqtt_publish(smqtt_client_t *client,
                                      client->publish_packet_id, qos, retain, msg);
 
         smqtt_status_t stat =
-                server_send(client->server, send_buffer, actual_len);
+                status_from_net(server_send(client->server, send_buffer, actual_len));
         if (stat != SMQTT_OK) {
             return stat;
         }
@@ -480,7 +502,8 @@ smqtt_publish(smqtt_client_t *client,
 
                 actual_len = make_pubrel_message(send_buffer, BUFFER_SIZE, client->publish_packet_id);
                 smqtt_status_t stat =
-                        server_send(client->server, send_buffer, actual_len);
+                        status_from_net(
+                                server_send(client->server, send_buffer, actual_len));
                 if (stat != SMQTT_OK) {
                     return stat;
                 }
@@ -524,7 +547,7 @@ smqtt_disconnect(smqtt_client_t *client)
 {
     size_t actual_len = make_disconnect_message(send_buffer, BUFFER_SIZE);
     smqtt_status_t stat =
-            server_send(client->server, send_buffer, actual_len);
+            status_from_net(server_send(client->server, send_buffer, actual_len));
 
     server_disconnect(client->server);
     if (stat != SMQTT_OK) {

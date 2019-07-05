@@ -9,12 +9,17 @@
 #include "server.h"
 #include "connection.h"
 
-#define BUFFER_SIZE ((size_t)1024)
-// TODO: move to session
-static uint8_t receive_buffer[BUFFER_SIZE];
 
-static void *
-session_thread_loop(void *);
+smqtt_mt_status_t
+status_from_net(smqtt_net_status_t stat)
+{
+    switch (stat) {
+        case SMQTT_NET_OK:
+            return SMQTT_MT_OK;
+        default:
+            return SMQTT_MT_SOCKET;
+    }
+}
 
 void init_queue(queue_t *queue)
 {
@@ -70,6 +75,7 @@ start_session_thread(
     session_state->buffer_size = buffer_size;
     session_state->ready_to_disconnect = false;
     session_state->server = server;
+    session_state->receive_buffer = malloc(buffer_size);
 
     init_queue(&session_state->free_queue);
     init_queue(&session_state->send_queue);
@@ -152,8 +158,9 @@ session_thread_loop(void *arg)
             position = slot_rec->index; // don't free as we use it below
             buffer_slot_t *slot = &session_state->buffer_slots[position];
             smqtt_mt_status_t stat =
-                    server_send(session_state->server,
-                                slot->buffer, slot->message_length);
+                    status_from_net(
+                            server_send(session_state->server,
+                                slot->buffer, slot->message_length));
 
             status = pthread_mutex_lock(&session_state->thread_mutex);
             enqueue(&session_state->free_queue, slot_rec);
@@ -166,11 +173,13 @@ session_thread_loop(void *arg)
 
 
         long sz = server_receive(session_state->server,
-                receive_buffer, sizeof(receive_buffer));
+                session_state->receive_buffer,
+                session_state->buffer_size);
         if (sz > 0) {
             fprintf(stderr, "con: message received\n");
 
-            response_t *resp = deserialize_response(receive_buffer, sz);
+            response_t *resp =
+                    deserialize_response(session_state->receive_buffer, sz);
             switch (resp->type) {
                 case PINGRESP: {
                     // TODO may not be the right one
@@ -241,7 +250,7 @@ enqueue_slot_for_send(session_state_t *session_state,
     return SMQTT_MT_OK;
 }
 
-smqtt_status_t
+smqtt_mt_status_t
 enqueue_waiting(session_state_t *session_state,
         waiting_t *waiting)
 {

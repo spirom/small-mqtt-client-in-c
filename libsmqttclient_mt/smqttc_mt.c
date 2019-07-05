@@ -21,6 +21,7 @@ static uint8_t send_buffer[BUFFER_SIZE];
 static uint8_t receive_buffer[BUFFER_SIZE];
 
 
+
 smqtt_mt_status_t
 smqtt_mt_connect_internal(server_mode_t mode,
                        const char* server_ip,
@@ -41,7 +42,9 @@ smqtt_mt_connect_internal(server_mode_t mode,
     smqtt_mt_status_t stat;
     smqtt_mt_client_t *connection =
             (smqtt_mt_client_t *) malloc(sizeof(smqtt_mt_client_t));
-    if (connection != 0) {
+    if (connection == NULL) {
+        return SMQTT_MT_NOMEM;
+    } else {
 
         if (mode == REMOTE_SERVER) {
             server = create_network_server();
@@ -50,7 +53,8 @@ smqtt_mt_connect_internal(server_mode_t mode,
         }
 
         // check connection strings are within bounds
-        if ((strlen(client_id) + 1 > sizeof(connection->clientid)) || (strlen(server_ip) + 1 > sizeof(connection->hostname))) {
+        if ((strlen(client_id) + 1 > sizeof(connection->clientid)) ||
+            (strlen(server_ip) + 1 > sizeof(connection->hostname))) {
             fprintf(stderr, "failed to connect: client or server exceed limits\n");
             free(connection);
             return SMQTT_MT_OK;  // strings too large
@@ -65,8 +69,8 @@ smqtt_mt_connect_internal(server_mode_t mode,
         // create the stuff we need to connect
         connection->connected = false;
 
-        stat = server_connect(server,
-                               connection->hostname, connection->port, 100);
+        stat = status_from_net(server_connect(server,
+                                              connection->hostname, connection->port, 100));
         if (stat != SMQTT_MT_OK) {
             fprintf(stderr, "failed to connect: to server socket\n");
             free(connection);
@@ -82,7 +86,7 @@ smqtt_mt_connect_internal(server_mode_t mode,
                                      last_will_and_testament, will_qos, will_retain,
                                      will_topic, will_message);
 
-        stat = server_send(server, send_buffer, send_len);
+        stat = status_from_net(server_send(server, send_buffer, send_len));
         if (stat != SMQTT_MT_OK) {
             free(server);
             free(connection);
@@ -139,13 +143,13 @@ smqtt_mt_connect_internal(server_mode_t mode,
         // set connected flag
         connection->connected = true;
 
+
+        connection->session_state = start_session_thread(10, 1024, server);
+
+
+        *client = connection;
+        return SMQTT_MT_OK;
     }
-
-    connection->session_state = start_session_thread(10, 1024, server);
-
-
-    *client = connection;
-    return SMQTT_MT_OK;
 }
 
 smqtt_mt_status_t
@@ -176,7 +180,7 @@ smqtt_mt_ping(smqtt_mt_client_t *client,
         void *cb_context)
 {
     if (!client->connected) {
-        return SMQTT_NOT_CONNECTED;
+        return SMQTT_MT_NOT_CONNECTED;
     } else {
 
         uint8_t *buffer;
@@ -228,7 +232,9 @@ smqtt_mt_disconnect(smqtt_mt_client_t *client)
 
     size_t actual_len = make_disconnect_message(send_buffer, BUFFER_SIZE);
     stat =
-            server_send(client->session_state->server, send_buffer, actual_len);
+            status_from_net(
+                    server_send(client->session_state->server,
+                            send_buffer, actual_len));
 
     // TODO: this should block for a while to be courteous
     server_disconnect(client->session_state->server);

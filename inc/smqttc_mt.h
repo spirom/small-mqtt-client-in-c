@@ -10,6 +10,7 @@
 
 typedef enum {
     SMQTT_MT_OK = 0,
+    SMQTT_MT_NOMEM,
     SMQTT_MT_BAD_MESSAGE,
     SMQTT_MT_NOACK,
     SMQTT_MT_NOMESSAGE,

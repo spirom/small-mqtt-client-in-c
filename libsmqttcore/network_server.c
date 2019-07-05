@@ -15,17 +15,17 @@
 
 static bool trace = true;
 
-smqtt_status_t
+smqtt_net_status_t
 network_connect(server_t *server,
         char *hostname, uint16_t port, uint16_t timeout_msec);
 
-smqtt_status_t
-network_send(struct server_t *server, char *buffer, size_t length);
+smqtt_net_status_t
+network_send(struct server_t *server, uint8_t *buffer, size_t length);
 
 long
-network_receive(struct server_t *server, char *buffer, size_t length);
+network_receive(struct server_t *server, uint8_t *buffer, size_t length);
 
-smqtt_status_t
+smqtt_net_status_t
 network_disconnect(struct server_t *server);
 
 typedef struct server_impl_t {
@@ -56,7 +56,7 @@ create_network_server(void)
     return server;
 }
 
-smqtt_status_t
+smqtt_net_status_t
 network_connect(server_t *server,
         char *hostname, uint16_t port, uint16_t timeout_msec)
 {
@@ -68,7 +68,7 @@ network_connect(server_t *server,
         fprintf(stderr,"net: could not create socket\n");
         free(impl);
         server->impl= NULL;
-        return 1;
+        return SMQTT_NET_SOCKET;
     }
     impl->socket_address.sin_family = AF_INET;
     impl->socket_address.sin_port = htons(port); // converts the unsigned short from host byte order to network byte order
@@ -80,7 +80,7 @@ network_connect(server_t *server,
         fprintf(stderr,"net: failed to connect to server socket\n");
         free(impl);
         server->impl = NULL;
-        return SMQTT_SOCKET;
+        return SMQTT_NET_SOCKET;
     }
 
     if (timeout_msec != 0) {
@@ -90,11 +90,11 @@ network_connect(server_t *server,
         SetSocketTimeout(impl->socket, timeout_msec);
     }
 
-    return SMQTT_OK;
+    return SMQTT_NET_OK;
 }
 
-smqtt_status_t
-network_send(server_t *server, char *buffer, size_t length)
+smqtt_net_status_t
+network_send(server_t *server, uint8_t *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
     if (trace) {
@@ -114,16 +114,16 @@ network_send(server_t *server, char *buffer, size_t length)
         }
         free(impl);
         server->impl = NULL;
-        return SMQTT_SOCKET;
+        return SMQTT_NET_SOCKET;
     }
     if (trace) {
         fprintf(stderr, "net: send succeeded\n");
     }
-    return SMQTT_OK;
+    return SMQTT_NET_OK;
 }
 
 long
-network_receive(server_t *server, char *buffer, size_t length)
+network_receive(server_t *server, uint8_t *buffer, size_t length)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
 
@@ -206,7 +206,7 @@ network_receive(server_t *server, char *buffer, size_t length)
     }
 }
 
-smqtt_status_t
+smqtt_net_status_t
 network_disconnect(server_t *server)
 {
     server_impl_t *impl = (server_impl_t *)server->impl;
@@ -216,6 +216,6 @@ network_disconnect(server_t *server)
     close(impl->socket);
     free(impl);
     server->impl = NULL;
-    return SMQTT_OK;
+    return SMQTT_NET_OK;
 }
 
