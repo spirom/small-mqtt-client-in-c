@@ -54,6 +54,7 @@ enqueue(queue_t *queue, void *payload)
         queue->tail = entry;
     } else {
         entry->previous = queue->tail;
+        queue->tail->next = entry;
         queue->tail = entry;
     }
 }
@@ -132,6 +133,7 @@ join_session_thread(session_state_t *session_state)
 void *
 session_thread_loop(void *arg)
 {
+    fprintf(stderr, "con: starting session loop\n");
     session_state_t *session_state = (session_state_t *)arg;
     for (;;) {
         int status = pthread_mutex_lock(&session_state->thread_mutex);
@@ -246,7 +248,7 @@ enqueue_waiting(session_state_t *session_state,
     int status = pthread_mutex_lock(&session_state->thread_mutex);
     enqueue(&session_state->ack_queue, waiting);
     status = pthread_mutex_unlock(&session_state->thread_mutex);
-    fprintf(stderr, "con: message enqueued\n");
+    fprintf(stderr, "con: message callback enqueued\n");
     return SMQTT_MT_OK;
 }
 

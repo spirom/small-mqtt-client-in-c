@@ -211,7 +211,7 @@ smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client)
 {
 
-#if 1
+#if 0
     struct timeval tv;
     fprintf(stderr, "cli: sleeping 1\n");
     tv.tv_sec = 5;

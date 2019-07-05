@@ -86,12 +86,19 @@ test_ping_v3()
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
     ASSERT_TRUE(client1 != NULL, result)
 
-    cb_state_t *state = create_cb_state(50);
+    cb_state_t *state1 = create_cb_state(50);
+    cb_state_t *state2 = create_cb_state(50);
 
-    status = smqtt_mt_ping(client1, 500, &ping_cb, state);
+    status = smqtt_mt_ping(client1, 500, &ping_cb, state1);
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
 
-    bool got_callback_before_timeout = wait_for_cb(state);
+    status = smqtt_mt_ping(client1, 500, &ping_cb, state2);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    bool got_callback_before_timeout = wait_for_cb(state1);
+    ASSERT_TRUE(got_callback_before_timeout, result)
+
+    got_callback_before_timeout = wait_for_cb(state2);
     ASSERT_TRUE(got_callback_before_timeout, result)
 
     status = smqtt_mt_disconnect(client1);
