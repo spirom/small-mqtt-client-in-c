@@ -402,6 +402,12 @@ test_pub_sub_qos0_v3()
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
 
     // check for receipt
+    got_callback_before_timeout = wait_for_cb(sub_msg_state);
+    ASSERT_TRUE(got_callback_before_timeout, result)
+    ASSERT_TRUE(!strcmp(sub_msg_state->message_response.topic, topics[0]), result);
+    ASSERT_TRUE(!strcmp(sub_msg_state->message_response.msg, "hello"), result);
+    ASSERT_TRUE(sub_msg_state->message_response.qos == QoS0, result);
+    ASSERT_TRUE(sub_msg_state->message_response.retain == false, result);
 
     // disconnect
 

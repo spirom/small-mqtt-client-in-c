@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <malloc.h>
 #include <messages.h>
+#include <string.h>
 
 #include "smqttc_mt.h"
 #include "smqttc_mt_internal.h"
@@ -357,7 +358,40 @@ session_thread_loop(void *arg)
                     }
                 }
                 case PUBLISH: {
-                    //
+                    // only deliver if this is the QoS0 case
+                    switch (resp->body.publish_data.qos) {
+                        case QoS0:
+                            if (client->msg_callback != NULL) {
+                                uint16_t topic_size =
+                                        resp->body.publish_data.topic_size;
+                                char *topic = malloc(topic_size + 1);
+                                strncpy(topic,
+                                        resp->body.publish_data.topic,
+                                        resp->body.publish_data.topic_size);
+                                topic[topic_size] = '\0';
+                                uint16_t message_size =
+                                        resp->body.publish_data.message_size;
+                                char *message = malloc(
+                                        message_size + 1);
+                                strncpy(message,
+                                        resp->body.publish_data.message,
+                                        resp->body.publish_data.message_size);
+                                topic[topic_size] = '\0';
+                                client->msg_callback(
+                                        topic,
+                                        message,
+                                        resp->body.publish_data.qos,
+                                        resp->body.publish_data.retain,
+                                        client->msg_cb_context);
+                            }
+                            break;
+                        case QoS1:
+                            break;
+                        case QoS2:
+                            break;
+                        default:
+                            break;
+                    }
                 }
                     break;
                 default:

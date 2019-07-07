@@ -2,8 +2,8 @@
 # TODO
 
 * do-while macro fixup
+* messages probably shouldn't always be null terminated
 * get actual messages using two connections
-    * QoS0 messagea
     * QoS1 messagea
     * QoS2 messages
     * Mixed QoS
@@ -16,7 +16,6 @@
 * test multiple subscribers and publishers
 * maybe just need to have one (or 0) message CB per client
 * MT safety problem for multiple subscribers vs publishers
-* maybe merge session state back with connection
 
 * off-by-1 in test count*
 * proper logging API
@@ -27,7 +26,7 @@
 * BUG: header isn't read correctly if the length field is long
 * add tests for long messages
 
-* re-examine buffesr and memory management
+* re-examine buffer and memory management
 
 ## General Protocol Health
 
