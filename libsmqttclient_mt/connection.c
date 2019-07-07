@@ -134,37 +134,37 @@ enqueue(queue_t *queue, void *payload)
     }
 }
 
-session_state_t *
+bool
 start_session_thread(
+        smqtt_mt_client_t *client,
         slot_index_t buffer_count, size_t buffer_size,
         server_t *server) {
 
 
-    session_state_t *session_state = malloc(sizeof(session_state_t));
-    session_state->buffer_count = buffer_count;
-    session_state->buffer_size = buffer_size;
-    session_state->ready_to_disconnect = false;
-    session_state->server = server;
-    session_state->receive_buffer = malloc(buffer_size);
+    client->buffer_count = buffer_count;
+    client->buffer_size = buffer_size;
+    client->ready_to_disconnect = false;
+    client->server = server;
+    client->receive_buffer = malloc(buffer_size);
 
-    init_queue(&session_state->free_queue);
-    init_queue(&session_state->send_queue);
-    init_queue(&session_state->ack_queue);
+    init_queue(&client->free_queue);
+    init_queue(&client->send_queue);
+    init_queue(&client->ack_queue);
 
-    pthread_mutex_init(&session_state->thread_mutex, NULL);
-    pthread_cond_init(&session_state->thread_loop_state_change, NULL);
-    pthread_cond_init(&session_state->buffer_slot_state_change, NULL);
+    pthread_mutex_init(&client->thread_mutex, NULL);
+    pthread_cond_init(&client->thread_loop_state_change, NULL);
+    pthread_cond_init(&client->buffer_slot_state_change, NULL);
 
-    session_state->buffer_slots =
+    client->buffer_slots =
             calloc(buffer_count, sizeof(buffer_slot_t));
     for (slot_index_t i = 0; i < buffer_count; i++) {
-        buffer_slot_t *slot = &session_state->buffer_slots[i];
+        buffer_slot_t *slot = &client->buffer_slots[i];
         //slot->callback = NULL;
         //slot->cb_context = NULL;
         slot->buffer = malloc(buffer_size);
         slot_index_rec_t *rec = malloc(sizeof(slot_index_rec_t));
         rec->index = i;
-        enqueue(&session_state->free_queue, (void *)rec);
+        enqueue(&client->free_queue, (void *)rec);
     }
 
     pthread_attr_t attr;
@@ -173,8 +173,8 @@ start_session_thread(
         // TODO
     }
 
-    status = pthread_create(&session_state->session_thread, &attr,
-                            &session_thread_loop, session_state);
+    status = pthread_create(&client->session_thread, &attr,
+                            &session_thread_loop, client);
     if (status != 0) {
         // TODO
     }
@@ -183,58 +183,58 @@ start_session_thread(
     if (status != 0) {
         // TODO
     }
-    return session_state;
+    return true;
 }
 
 int
-join_session_thread(session_state_t *session_state)
+join_session_thread(smqtt_mt_client_t *client)
 {
 
-    int status = pthread_join(session_state->session_thread, NULL);
+    int status = pthread_join(client->session_thread, NULL);
     if (status != 0) {
         // TODO
     }
 
-    for (uint16_t i = 0; i < session_state->buffer_count; i++) {
-        free(session_state->buffer_slots[i].buffer);
+    for (uint16_t i = 0; i < client->buffer_count; i++) {
+        free(client->buffer_slots[i].buffer);
     }
 
-    free(session_state->buffer_slots);
+    free(client->buffer_slots);
 
     // TODO: clear out queues
 
-    free(session_state);
+    free(client);
 }
 
 void *
 session_thread_loop(void *arg)
 {
     fprintf(stderr, "con: starting session loop\n");
-    session_state_t *session_state = (session_state_t *)arg;
+    smqtt_mt_client_t *client = (smqtt_mt_client_t *)arg;
     for (;;) {
-        int status = pthread_mutex_lock(&session_state->thread_mutex);
+        int status = pthread_mutex_lock(&client->thread_mutex);
         bool has_message_to_send = false;
         slot_index_t position;
-        bool ready = session_state->ready_to_disconnect;
+        bool ready = client->ready_to_disconnect;
         slot_index_rec_t *slot_rec;
         if (!ready) {
             has_message_to_send =
-                    dequeue(&session_state->send_queue, (void **)&slot_rec);
+                    dequeue(&client->send_queue, (void **)&slot_rec);
         }
-        status = pthread_mutex_unlock(&session_state->thread_mutex);
+        status = pthread_mutex_unlock(&client->thread_mutex);
         if (ready) break;
 
         if (has_message_to_send) {
             position = slot_rec->index; // don't free as we use it below
-            buffer_slot_t *slot = &session_state->buffer_slots[position];
+            buffer_slot_t *slot = &client->buffer_slots[position];
             smqtt_mt_status_t stat =
                     status_from_net(
-                            server_send(session_state->server,
+                            server_send(client->server,
                                 slot->buffer, slot->message_length));
 
-            status = pthread_mutex_lock(&session_state->thread_mutex);
-            enqueue(&session_state->free_queue, slot_rec);
-            status = pthread_mutex_unlock(&session_state->thread_mutex);
+            status = pthread_mutex_lock(&client->thread_mutex);
+            enqueue(&client->free_queue, slot_rec);
+            status = pthread_mutex_unlock(&client->thread_mutex);
 
             fprintf(stderr, "con: message sent\n");
         } else {
@@ -242,25 +242,25 @@ session_thread_loop(void *arg)
         }
 
 
-        long sz = server_receive(session_state->server,
-                session_state->receive_buffer,
-                session_state->buffer_size);
+        long sz = server_receive(client->server,
+                                 client->receive_buffer,
+                                 client->buffer_size);
         if (sz > 0) {
             fprintf(stderr, "con: message received\n");
 
             response_t *resp =
-                    deserialize_response(session_state->receive_buffer, sz);
+                    deserialize_response(client->receive_buffer, sz);
             switch (resp->type) {
                 case PINGRESP: {
                     waiting_t *waiting;
-                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    status = pthread_mutex_lock(&client->thread_mutex);
                     bool found =
                             dequeue_by_type_and_id(
-                                    &session_state->ack_queue,
+                                    &client->ack_queue,
                                     PINGRESP,
                                     0l,
                                     &waiting);
-                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
                     if (found) {
                         waiting->callback(true, waiting->cb_context);
                         free(waiting);
@@ -270,13 +270,13 @@ session_thread_loop(void *arg)
                 case PUBACK: {
                     // Qos1 case, callback but no response
                     waiting_t *waiting;
-                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    status = pthread_mutex_lock(&client->thread_mutex);
                     bool found = dequeue_by_type_and_id(
-                            &session_state->ack_queue,
+                            &client->ack_queue,
                             PUBACK,
                             resp->body.puback_data.packet_id,
                             &waiting);
-                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
                     if (found) {
                         waiting->callback(true, waiting->cb_context);
                         free(waiting);
@@ -286,14 +286,14 @@ session_thread_loop(void *arg)
                 case PUBREC: {
                     // QoS2 case part 1: response but no callback yet
                     waiting_t *waiting;
-                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    status = pthread_mutex_lock(&client->thread_mutex);
                     uint16_t packet_id = resp->body.pubrec_data.packet_id;
                     bool found = dequeue_by_type_and_id(
-                            &session_state->ack_queue,
+                            &client->ack_queue,
                             PUBREC,
                             packet_id,
                             &waiting);
-                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
                     if (found) {
                         // no locking needed for this part as we are using the
                         // private buffer
@@ -301,14 +301,14 @@ session_thread_loop(void *arg)
 
                         size_t actual_len =
                                 make_pubrel_message(
-                                        session_state->receive_buffer,
-                                        session_state->buffer_size,
+                                        client->receive_buffer,
+                                        client->buffer_size,
                                         packet_id);
                         smqtt_mt_status_t stat =
                                 status_from_net(
                                         server_send(
-                                                session_state->server,
-                                                session_state->receive_buffer,
+                                                client->server,
+                                                client->receive_buffer,
                                                 actual_len));
                         if (stat == SMQTT_MT_OK) {
                             // just reuse the existing one without abusing union
@@ -316,20 +316,20 @@ session_thread_loop(void *arg)
                             waiting->type = PUBCOMP;
                             waiting->pubcomp_data.packet_id = packet_id;
                             // this locks under the hood so we're fine
-                            enqueue_waiting(session_state, waiting);
+                            enqueue_waiting(client, waiting);
                         }
                     }
                 }
                 case PUBCOMP: {
                     // QoS2 case part 2: finally do the callback
                     waiting_t *waiting;
-                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    status = pthread_mutex_lock(&client->thread_mutex);
                     bool found = dequeue_by_type_and_id(
-                            &session_state->ack_queue,
+                            &client->ack_queue,
                             PUBCOMP,
                             resp->body.pubcomp_data.packet_id,
                             &waiting);
-                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
                     if (found) {
                         waiting->callback(true, waiting->cb_context);
                         free(waiting);
@@ -338,13 +338,13 @@ session_thread_loop(void *arg)
                     break;
                 case SUBACK: {
                     waiting_t *waiting;
-                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    status = pthread_mutex_lock(&client->thread_mutex);
                     bool found = dequeue_by_type_and_id(
-                            &session_state->ack_queue,
+                            &client->ack_queue,
                             SUBACK,
                             resp->body.suback_data.packet_id,
                             &waiting);
-                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
                     if (found && (waiting->suback_data.sub_callback != NULL)) {
                         waiting->suback_data.sub_callback(
                                 true,
@@ -376,56 +376,58 @@ session_thread_loop(void *arg)
 }
 
 int
-signal_disconnect(session_state_t *session_state)
+signal_disconnect(smqtt_mt_client_t *client)
 {
-    int status = pthread_mutex_lock(&session_state->thread_mutex);
-    session_state->ready_to_disconnect = true;
-    status = pthread_mutex_unlock(&session_state->thread_mutex);
+    int status = pthread_mutex_lock(&client->thread_mutex);
+    client->ready_to_disconnect = true;
+    status = pthread_mutex_unlock(&client->thread_mutex);
     return status;
 }
 
 extern uint16_t
-get_buffer_slot(session_state_t *session_state,
+get_buffer_slot(
+        smqtt_mt_client_t *client,
         uint8_t **buffer)
 {
-    int status = pthread_mutex_lock(&session_state->thread_mutex);
+    int status = pthread_mutex_lock(&client->thread_mutex);
     uint16_t position;
     slot_index_rec_t *slot_rec;
-    bool got_a_slot = dequeue(&session_state->free_queue, (void **)&slot_rec);;
+    bool got_a_slot = dequeue(&client->free_queue, (void **)&slot_rec);;
     while (!got_a_slot) {
         // TODO: use cond var
-        got_a_slot = dequeue(&session_state->free_queue, (void **)&slot_rec);
+        got_a_slot = dequeue(&client->free_queue, (void **)&slot_rec);
     }
     position = slot_rec->index;
-    buffer_slot_t *slot = &session_state->buffer_slots[position];
+    buffer_slot_t *slot = &client->buffer_slots[position];
     free(slot_rec);
-    status = pthread_mutex_unlock(&session_state->thread_mutex);
+    status = pthread_mutex_unlock(&client->thread_mutex);
 
     *buffer = slot->buffer;
     return position;
 }
 
 extern smqtt_mt_status_t
-enqueue_slot_for_send(session_state_t *session_state,
+enqueue_slot_for_send(smqtt_mt_client_t *client,
                       slot_index_t position, uint16_t length)
 {
-    session_state->buffer_slots[position].message_length = length;
+    client->buffer_slots[position].message_length = length;
     slot_index_rec_t *rec = malloc(sizeof(slot_index_rec_t));
     rec->index = position;
-    int status = pthread_mutex_lock(&session_state->thread_mutex);
-    enqueue(&session_state->send_queue, rec);
-    status = pthread_mutex_unlock(&session_state->thread_mutex);
+    int status = pthread_mutex_lock(&client->thread_mutex);
+    enqueue(&client->send_queue, rec);
+    status = pthread_mutex_unlock(&client->thread_mutex);
     fprintf(stderr, "con: message enqueued\n");
     return SMQTT_MT_OK;
 }
 
 smqtt_mt_status_t
-enqueue_waiting(session_state_t *session_state,
+enqueue_waiting(
+        smqtt_mt_client_t *client,
         waiting_t *waiting)
 {
-    int status = pthread_mutex_lock(&session_state->thread_mutex);
-    enqueue(&session_state->ack_queue, waiting);
-    status = pthread_mutex_unlock(&session_state->thread_mutex);
+    int status = pthread_mutex_lock(&client->thread_mutex);
+    enqueue(&client->ack_queue, waiting);
+    status = pthread_mutex_unlock(&client->thread_mutex);
     fprintf(stderr, "con: message callback enqueued\n");
     return SMQTT_MT_OK;
 }

@@ -9,29 +9,6 @@
 #include "server.h"
 #include "connection.h"
 
-#define MAX_XLIENT_ID_CHARS 24
-#define MAX_HOSTNAME_CHARS 100
-
-struct smqtt_mt_client
-{
-    char                hostname[MAX_HOSTNAME_CHARS];
-    char                clientid[MAX_XLIENT_ID_CHARS];
-    uint16_t            port;
-    /**
-     * Is this currently connected?
-     */
-    bool                connected;
-    /**
-     * Keep track of the various packet ID sequences
-     */
-    uint16_t            publish_packet_id;
-    uint16_t            subscribe_packet_id;
-    uint16_t            unsubscribe_packet_id;
-
-
-    session_state_t *session_state;
-};
-
 smqtt_mt_status_t
 smqtt_mt_connect_internal(
         server_mode_t mode,

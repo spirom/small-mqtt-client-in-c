@@ -74,6 +74,9 @@ smqtt_mt_connect_internal(
         strcpy(connection->hostname, server_ip);
         strcpy(connection->clientid, client_id);
 
+        connection->msg_callback = msg_callback;
+        connection->msg_cb_context = msg_cb_context;
+
         // create the stuff we need to connect
         connection->connected = false;
 
@@ -152,7 +155,7 @@ smqtt_mt_connect_internal(
         connection->connected = true;
 
 
-        connection->session_state = start_session_thread(10, 1024, server);
+        start_session_thread(connection, 10, 1024, server);
 
 
         *client = connection;
@@ -203,7 +206,7 @@ smqtt_mt_ping(smqtt_mt_client_t *client,
 
         uint8_t *buffer;
         uint16_t slot;
-        slot = get_buffer_slot(client->session_state, &buffer);
+        slot = get_buffer_slot(client, &buffer);
         size_t actual_len =
                 make_pingreq_message(buffer, BUFFER_SIZE);
 
@@ -211,10 +214,10 @@ smqtt_mt_ping(smqtt_mt_client_t *client,
         waiting->type = PINGRESP;
         waiting->callback = callback;
         waiting->cb_context = cb_context;
-        enqueue_waiting(client->session_state, waiting);
+        enqueue_waiting(client, waiting);
 
         smqtt_mt_status_t stat =
-                enqueue_slot_for_send(client->session_state, slot, actual_len);
+                enqueue_slot_for_send(client, slot, actual_len);
         fprintf(stderr, "cli: message enqueued\n");
 
 
@@ -243,7 +246,7 @@ smqtt_mt_publish(smqtt_mt_client_t *client,
     } else {
         uint8_t *buffer;
         uint16_t slot;
-        slot = get_buffer_slot(client->session_state, &buffer);
+        slot = get_buffer_slot(client, &buffer);
         size_t actual_len =
                 make_publish_message(buffer, BUFFER_SIZE, topic,
                                      client->publish_packet_id, qos, retain, msg);
@@ -255,7 +258,7 @@ smqtt_mt_publish(smqtt_mt_client_t *client,
                 waiting->callback = callback;
                 waiting->cb_context = cb_context;
                 waiting->puback_data.packet_id = client->publish_packet_id;
-                enqueue_waiting(client->session_state, waiting);
+                enqueue_waiting(client, waiting);
                 client->publish_packet_id++; // TODO: MT safety
             }
             break;
@@ -265,7 +268,7 @@ smqtt_mt_publish(smqtt_mt_client_t *client,
                 waiting->callback = callback;
                 waiting->cb_context = cb_context;
                 waiting->pubrec_data.packet_id = client->publish_packet_id;
-                enqueue_waiting(client->session_state, waiting);
+                enqueue_waiting(client, waiting);
                 client->publish_packet_id++; // TODO: MT safety
             }
                 break;
@@ -275,7 +278,7 @@ smqtt_mt_publish(smqtt_mt_client_t *client,
         }
 
         smqtt_mt_status_t stat =
-                enqueue_slot_for_send(client->session_state, slot, actual_len);
+                enqueue_slot_for_send(client, slot, actual_len);
 
         if (stat != SMQTT_MT_OK) {
             return stat;
@@ -304,7 +307,7 @@ smqtt_mt_subscribe(
     } else {
         uint8_t *buffer;
         uint16_t slot;
-        slot = get_buffer_slot(client->session_state, &buffer);
+        slot = get_buffer_slot(client, &buffer);
         size_t actual_len =
                 make_subscribe_message(buffer, BUFFER_SIZE,
                                        client->subscribe_packet_id,
@@ -317,11 +320,11 @@ smqtt_mt_subscribe(
         waiting->cb_context = sub_cb_context;
         waiting->suback_data.packet_id = client->publish_packet_id;
         waiting->suback_data.sub_callback = sub_callback;
-        enqueue_waiting(client->session_state, waiting);
+        enqueue_waiting(client, waiting);
         client->publish_packet_id++; // TODO: MT safety
 
         smqtt_mt_status_t stat =
-                enqueue_slot_for_send(client->session_state, slot, actual_len);
+                enqueue_slot_for_send(client, slot, actual_len);
 
         if (stat != SMQTT_MT_OK) {
             return stat;
@@ -335,9 +338,9 @@ smqtt_mt_disconnect(smqtt_mt_client_t *client)
 {
 
     fprintf(stderr, "cli: disconnecting\n");
-    signal_disconnect(client->session_state);
+    signal_disconnect(client);
 
-    smqtt_mt_status_t stat = join_session_thread(client->session_state);
+    smqtt_mt_status_t stat = join_session_thread(client);
     if (stat != SMQTT_MT_OK) {
         return stat;
     }
@@ -345,19 +348,17 @@ smqtt_mt_disconnect(smqtt_mt_client_t *client)
     size_t actual_len = make_disconnect_message(send_buffer, BUFFER_SIZE);
     stat =
             status_from_net(
-                    server_send(client->session_state->server,
+                    server_send(client->server,
                             send_buffer, actual_len));
 
     // TODO: this should block for a while to be courteous
-    server_disconnect(client->session_state->server);
+    server_disconnect(client->server);
 
     // TODO: maybe a force argument, but otherwise exit without
     // TODO: joining the thread if there was a problem
     if (stat != SMQTT_MT_OK) {
         return stat;
     }
-
-
 
     return SMQTT_MT_OK;
 }

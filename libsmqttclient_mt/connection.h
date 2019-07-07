@@ -57,6 +57,29 @@ typedef struct {
 } queue_t;
 
 typedef struct {
+
+} session_state_t;
+
+#define MAX_CLIENT_ID_CHARS 24
+#define MAX_HOSTNAME_CHARS 100
+
+struct smqtt_mt_client
+{
+    char                hostname[MAX_HOSTNAME_CHARS];
+    char                clientid[MAX_CLIENT_ID_CHARS];
+    uint16_t            port;
+    /**
+     * Is this currently connected?
+     */
+    bool                connected;
+    /**
+     * Keep track of the various packet ID sequences
+     */
+    uint16_t            publish_packet_id;
+    uint16_t            subscribe_packet_id;
+    uint16_t            unsubscribe_packet_id;
+
+
     slot_index_t buffer_count;
     size_t buffer_size;
     uint8_t *receive_buffer;
@@ -80,8 +103,7 @@ typedef struct {
      * Underlying server connection
      */
     server_t *          server;
-} session_state_t;
-
+};
 
 smqtt_mt_status_t
 status_from_net(smqtt_net_status_t stat);
@@ -93,8 +115,12 @@ session_thread_loop(void *);
  * Also initializes buffer pool
  * @return
  */
-extern session_state_t *
-start_session_thread(slot_index_t buffer_count, size_t buffer_size, server_t *server);
+extern bool
+start_session_thread(
+        smqtt_mt_client_t *client,
+        slot_index_t buffer_count,
+        size_t buffer_size,
+        server_t *server);
 
 /**
  * Also frees buffer pool
@@ -102,10 +128,10 @@ start_session_thread(slot_index_t buffer_count, size_t buffer_size, server_t *se
  * @return
  */
 extern int
-join_session_thread(session_state_t *);
+join_session_thread(smqtt_mt_client_t *client);
 
 extern uint16_t
-get_buffer_slot(session_state_t *session_state,
+get_buffer_slot(smqtt_mt_client_t *client,
         uint8_t **buffer);
 
 /**
@@ -116,13 +142,13 @@ get_buffer_slot(session_state_t *session_state,
  * @return
  */
 extern smqtt_mt_status_t
-enqueue_slot_for_send(session_state_t *session_state,
+enqueue_slot_for_send(smqtt_mt_client_t *client,
                       slot_index_t slot, uint16_t length);
 
 extern smqtt_mt_status_t
-enqueue_waiting(session_state_t *session_state, waiting_t *waiting);
+enqueue_waiting(smqtt_mt_client_t *client, waiting_t *waiting);
 
 extern int
-signal_disconnect(session_state_t *);
+signal_disconnect(smqtt_mt_client_t *client);
 
 #endif //SMQTTC_CONNECTION_H
