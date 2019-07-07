@@ -2,10 +2,13 @@
 #ifndef SMQTTC_MESSAGES_H
 #define SMQTTC_MESSAGES_H
 
-#include "protocol.h"
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "protocol.h"
+#include "messages_internal.h"
 
 /**
  * It's easier to conflate the request and response type because
@@ -36,8 +39,6 @@ typedef enum {
     Connection_Refused_bad_username_or_password,
     Connection_Refused_not_authorized
 } connack_msg_t;
-
-#define MAX_TOPICS 32
 
 // TODO: maybe these are just messages after all
 typedef struct response_t {

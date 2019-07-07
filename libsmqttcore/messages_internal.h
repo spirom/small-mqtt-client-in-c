@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MAX_TOPICS 32
+
 /**
  * Encode the given size as one to four bytes of variable-length,
  * LSB-first encoding with continuation bits.

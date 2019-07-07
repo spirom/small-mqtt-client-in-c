@@ -21,6 +21,13 @@ typedef struct {
     pthread_mutex_t lock;
     pthread_cond_t cond;
     bool done;
+    union {
+        struct {
+            uint16_t topic_count;
+            bool success[MAX_TOPICS];
+            QoS qoss[MAX_TOPICS];
+        } subscription_response;
+    };
 } cb_state_t;
 
 cb_state_t *create_cb_state()
@@ -55,6 +62,12 @@ void subscribe_cb(
         void *context)
 {
     printf("called back [subscribe]\n");
+    cb_state_t *cb_state = (cb_state_t *) context;
+    cb_state->subscription_response.topic_count = topic_count;
+    for (uint16_t i = 0; i < topic_count; i++) {
+        cb_state->subscription_response.success[i] = success[i];
+        cb_state->subscription_response.qoss[i] = qoss[i];
+    }
     notify_cb_state((cb_state_t *) context);
 }
 
@@ -259,6 +272,10 @@ test_subscribe_simple_v3()
 
     bool got_callback_before_timeout = wait_for_cb(state1);
     ASSERT_TRUE(got_callback_before_timeout, result)
+    ASSERT_TRUE(state1->subscription_response.topic_count == 1, result);
+    ASSERT_TRUE(state1->subscription_response.success[0], result);
+    ASSERT_TRUE(state1->subscription_response.qoss[0] == QoS1, result);
+
 
     status = smqtt_mt_disconnect(client1);
     ASSERT_TRUE(status == SMQTT_MT_OK, result)

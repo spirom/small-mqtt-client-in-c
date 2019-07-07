@@ -1,9 +1,15 @@
 
 # TODO
 
-off-by-1 in test count*
-proper logging API
+* do-while macro fixup
+* check publication acknowledgement in test
+* more complex publication acknowledgment test
+* get actual messages using two connections
+* off-by-1 in test count*
+* proper logging API
 * callbacks should always be optional so check for NULL before calling
+* unsubscribe
+* receive messages at various qos levels
 
 * deal with memory ownership issues
 
