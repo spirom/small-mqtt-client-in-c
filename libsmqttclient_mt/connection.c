@@ -356,6 +356,9 @@ session_thread_loop(void *arg)
                         free(waiting);
                     }
                 }
+                case PUBLISH: {
+                    //
+                }
                     break;
                 default:
                     break;

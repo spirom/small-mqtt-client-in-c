@@ -23,20 +23,28 @@ static uint8_t receive_buffer[BUFFER_SIZE];
 
 
 smqtt_mt_status_t
-smqtt_mt_connect_internal(server_mode_t mode,
-                       const char* server_ip,
-                       uint32_t port,
-                       const char* client_id,
-                       const char *user,
-                       const char *pw,
-                       uint16_t keep_alive_sec,
-                       bool clean_session,
-                       bool last_will_and_testament,
-                       QoS will_qos,
-                       bool will_retain,
-                       const char *will_topic,
-                       const char *will_message,
-                       smqtt_mt_client_t **client)
+smqtt_mt_connect_internal(
+        server_mode_t mode,
+        const char* server_ip,
+        uint32_t port,
+        const char* client_id,
+        const char *user,
+        const char *pw,
+        uint16_t keep_alive_sec,
+        bool clean_session,
+        bool last_will_and_testament,
+        QoS will_qos,
+        bool will_retain,
+        const char *will_topic,
+        const char *will_message,
+        void (*msg_callback)(
+                char *topic,
+                char *msg,
+                QoS qos,
+                bool retain,
+                void *context),
+        void *msg_cb_context,
+        smqtt_mt_client_t **client)
 {
     server_t *server = NULL;
     smqtt_mt_status_t stat;
@@ -153,24 +161,34 @@ smqtt_mt_connect_internal(server_mode_t mode,
 }
 
 smqtt_mt_status_t
-smqtt_mt_connect(const char *server_ip,
-              uint32_t port,
-              const char *client_id,
-              const char *user,
-              const char *pw,
-              uint16_t keep_alive_sec,
-              bool clean_session,
-              bool last_will_and_testament,
-              QoS will_qos,
-              bool will_retain,
-              const char *will_topic,
-              const char *will_message,
-              smqtt_mt_client_t **client)
+smqtt_mt_connect(
+        const char *server_ip,
+        uint32_t port,
+        const char *client_id,
+        const char *user,
+        const char *pw,
+        uint16_t keep_alive_sec,
+        bool clean_session,
+        bool last_will_and_testament,
+        QoS will_qos,
+        bool will_retain,
+        const char *will_topic,
+        const char *will_message,
+        void (*msg_callback)(
+                char *topic,
+                char *msg,
+                QoS qos,
+                bool retain,
+                void *context),
+        void *msg_cb_context,
+        smqtt_mt_client_t **client)
 {
-    return smqtt_mt_connect_internal(REMOTE_SERVER, server_ip, port, client_id,
-                                  user, pw, keep_alive_sec, clean_session,
-                                  last_will_and_testament, will_qos, will_retain,
-                                  will_topic, will_message, client);
+    return smqtt_mt_connect_internal(
+            REMOTE_SERVER, server_ip, port, client_id,
+            user, pw, keep_alive_sec, clean_session,
+            last_will_and_testament, will_qos, will_retain,
+            will_topic, will_message, msg_callback, msg_cb_context,
+            client);
 }
 
 smqtt_mt_status_t
@@ -279,8 +297,7 @@ smqtt_mt_subscribe(
                 const bool success[],
                 const QoS qoss[],
                 void *context),
-        void *sub_cb_context,
-        void (*msg_callback)(char *topic, char *msg, QoS qos, bool retain))
+        void *sub_cb_context)
 {
     if (!client->connected) {
         return SMQTT_MT_NOT_CONNECTED;

@@ -2,23 +2,32 @@
 # TODO
 
 * do-while macro fixup
-* check publication acknowledgement in test
-* more complex publication acknowledgment test
 * get actual messages using two connections
+    * QoS0 messagea
+    * QoS1 messagea
+    * QoS2 messages
+    * Mixed QoS
+* unsubscribe
+    * simple
+    * full
+    * partial
+* test multiple subscribers
+* test multiple publishers
+* test multiple subscribers and publishers
+* maybe just need to have one (or 0) message CB per client
+* MT safety problem for multiple subscribers vs publishers
+* maybe merge session state back with connection
+
 * off-by-1 in test count*
 * proper logging API
 * callbacks should always be optional so check for NULL before calling
-* unsubscribe
-* receive messages at various qos levels
 
 * deal with memory ownership issues
 
 * BUG: header isn't read correctly if the length field is long
+* add tests for long messages
 
-* message types
-    * publish
-    * subscribe
-    * receive messages
+* re-examine buffesr and memory management
 
 ## General Protocol Health
 

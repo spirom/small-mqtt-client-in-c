@@ -27,6 +27,12 @@ typedef struct {
             bool success[MAX_TOPICS];
             QoS qoss[MAX_TOPICS];
         } subscription_response;
+        struct {
+            char *topic;
+            char *msg;
+            QoS qos;
+            bool retain;
+        } message_response;
     };
 } cb_state_t;
 
@@ -71,6 +77,29 @@ void subscribe_cb(
     notify_cb_state((cb_state_t *) context);
 }
 
+void message_cb(
+        char *topic,
+        char *msg,
+        QoS qos,
+        bool retain,
+        void *context)
+{
+    printf("called back [message]\n");
+    cb_state_t *state = (cb_state_t *) context;
+    pthread_mutex_lock(&state->lock);
+    // wait until the single slot is available
+    while (state->done)
+        pthread_cond_wait(&state->cond, &state->lock);
+    // fill the slot and signal
+    state->message_response.topic = topic;
+    state->message_response.msg = msg;
+    state->message_response.qos = qos;
+    state->message_response.retain = retain;
+    state->done = true;
+    pthread_cond_signal(&state->cond);
+    pthread_mutex_unlock(&state->lock);
+}
+
 bool wait_for_cb(cb_state_t *state)
 {
     pthread_mutex_lock(&state->lock);
@@ -91,7 +120,7 @@ test_connect_disconnect_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                    "test_client_1", "user1", "password1",30u, true,
-                                   false, QoS0, false, NULL, NULL,
+                                   false, QoS0, false, NULL, NULL, NULL, NULL,
                                    &client1);
 
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
@@ -113,7 +142,7 @@ test_ping_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                       "test_client_1", "user1", "password1",30u, true,
-                                      false, QoS0, false, NULL, NULL,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
                                       &client1);
 
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
@@ -150,7 +179,7 @@ test_publish_qos0_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                       "test_client_1", "user1", "password1",30u, true,
-                                      false, QoS0, false, NULL, NULL,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
                                       &client1);
 
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
@@ -178,7 +207,7 @@ test_publish_qos1_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                       "test_client_1", "user1", "password1",30u, true,
-                                      false, QoS0, false, NULL, NULL,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
                                       &client1);
 
     cb_state_t *state1 = create_cb_state();
@@ -217,7 +246,7 @@ test_publish_qos2_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                       "test_client_1", "user1", "password1",30u, true,
-                                      false, QoS0, false, NULL, NULL,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
                                       &client1);
 
     cb_state_t *state1 = create_cb_state();
@@ -256,7 +285,7 @@ test_subscribe_simple_v3()
     smqtt_mt_status_t status =
             smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
                                       "test_client_1", "user1", "password1",30u, true,
-                                      false, QoS0, false, NULL, NULL,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
                                       &client1);
 
     cb_state_t *state1 = create_cb_state();
@@ -267,7 +296,7 @@ test_subscribe_simple_v3()
     const char *topics[] = { "test_topic" };
     QoS qoss[] = { QoS1 };
     status = smqtt_mt_subscribe(
-            client1, 1, topics, qoss, subscribe_cb, state1, NULL);
+            client1, 1, topics, qoss, subscribe_cb, state1);
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
 
     bool got_callback_before_timeout = wait_for_cb(state1);
@@ -278,6 +307,108 @@ test_subscribe_simple_v3()
 
 
     status = smqtt_mt_disconnect(client1);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    return result;
+}
+
+test_result_t
+test_subscribe_multiple_v3()
+{
+    test_result_t result;
+    init_result(&result);
+
+    smqtt_mt_client_t *client1 = NULL;
+    smqtt_mt_status_t status =
+            smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
+                                      "test_client_1", "user1", "password1",30u, true,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
+                                      &client1);
+
+    cb_state_t *state1 = create_cb_state();
+
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+    ASSERT_TRUE(client1 != NULL, result)
+
+    const char *topics[] = { "test_topic_1", "test_topic_2", "test_topic_3" };
+    QoS qoss[] = { QoS1, QoS2, QoS0 };
+    status = smqtt_mt_subscribe(
+            client1, 3, topics, qoss, subscribe_cb, state1);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    bool got_callback_before_timeout = wait_for_cb(state1);
+    ASSERT_TRUE(got_callback_before_timeout, result)
+    ASSERT_TRUE(state1->subscription_response.topic_count == 3, result);
+    ASSERT_TRUE(state1->subscription_response.success[0], result);
+    ASSERT_TRUE(state1->subscription_response.qoss[0] == QoS1, result);
+    ASSERT_TRUE(state1->subscription_response.success[1], result);
+    ASSERT_TRUE(state1->subscription_response.qoss[1] == QoS2, result);
+    ASSERT_TRUE(state1->subscription_response.success[2], result);
+    ASSERT_TRUE(state1->subscription_response.qoss[2] == QoS0, result);
+
+    status = smqtt_mt_disconnect(client1);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    return result;
+}
+
+test_result_t
+test_pub_sub_qos0_v3()
+{
+    test_result_t result;
+    init_result(&result);
+
+    smqtt_mt_client_t *publisher = NULL;
+    smqtt_mt_status_t status =
+            smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
+                                      "pub_client_1", "user1", "password1",30u, true,
+                                      false, QoS0, false, NULL, NULL, NULL, NULL,
+                                      &publisher);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+    ASSERT_TRUE(publisher != NULL, result)
+
+    cb_state_t *sub_state = create_cb_state();
+    cb_state_t *sub_msg_state = create_cb_state();
+
+    smqtt_mt_client_t *subscriber = NULL;
+    status =
+            smqtt_mt_connect_internal(REMOTE_SERVER, "127.0.0.1", 1883,
+                                      "sub_client_1", "user1", "password1",30u, true,
+                                      false, QoS0, false, NULL, NULL,
+                                      message_cb, sub_msg_state,
+                                      &subscriber);
+
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+    ASSERT_TRUE(subscriber != NULL, result)
+
+    // subscribe
+
+    const char *topics[] = { "test_topic_1" };
+    QoS qoss[] = { QoS0 };
+    status = smqtt_mt_subscribe(
+            subscriber, 1, topics, qoss,
+            subscribe_cb, sub_state);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    bool got_callback_before_timeout = wait_for_cb(sub_state);
+    ASSERT_TRUE(got_callback_before_timeout, result)
+    ASSERT_TRUE(sub_state->subscription_response.topic_count == 1, result);
+    ASSERT_TRUE(sub_state->subscription_response.success[0], result);
+
+    // publish something
+
+    status = smqtt_mt_publish(
+            publisher, topics[0], "hello", QoS0, false, NULL, NULL);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    // check for receipt
+
+    // disconnect
+
+    status = smqtt_mt_disconnect(publisher);
+    ASSERT_TRUE(status == SMQTT_MT_OK, result)
+
+    status = smqtt_mt_disconnect(subscriber);
     ASSERT_TRUE(status == SMQTT_MT_OK, result)
 
     return result;

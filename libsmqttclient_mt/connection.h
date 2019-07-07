@@ -69,7 +69,13 @@ typedef struct {
     queue_t free_queue;
     queue_t send_queue;
     queue_t ack_queue;
-
+    void (*msg_callback)(
+            char *topic,
+            char *msg,
+            QoS qos,
+            bool retain,
+            void *context);
+    void *msg_cb_context;
     /**
      * Underlying server connection
      */

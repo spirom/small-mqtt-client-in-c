@@ -41,6 +41,13 @@ smqtt_mt_connect(
         bool will_retain,
         const char *will_topic,
         const char *will_message,
+        void (*msg_callback)(
+                char *topic,
+                char *msg,
+                QoS qos,
+                bool retain,
+                void *context),
+        void *msg_cb_context,
         smqtt_mt_client_t **client);
 
 smqtt_mt_status_t
@@ -73,8 +80,7 @@ smqtt_mt_subscribe(
                 const bool success[],
                 const QoS qoss[],
                 void *context),
-        void *sub_cb_context,
-        void (*msg_callback)(char *topic, char *msg, QoS qos, bool retain));
+        void *sub_cb_context);
 
 smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client);
