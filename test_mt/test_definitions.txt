@@ -1,4 +1,8 @@
 
 
 //TEST_DEF(test_connect_disconnect_v3)
-TEST_DEF(test_ping_v3)
+//TEST_DEF(test_ping_v3)
+//TEST_DEF(test_publish_qos0_v3)
+//TEST_DEF(test_publish_qos1_v3)
+//TEST_DEF(test_publish_qos2_v3)
+TEST_DEF(test_subscribe_simple_v3)

@@ -28,25 +28,53 @@ typedef enum {
 typedef struct smqtt_mt_client smqtt_mt_client_t;
 
 smqtt_mt_status_t
-smqtt_mt_connect(const char *server_ip,
-              uint32_t port,
-              const char *client_id,
-              const char *user,
-              const char *pw,
-              uint16_t keep_alive_sec,
-              bool clean_session,
-              bool last_will_and_testament,
-              QoS will_qos,
-              bool will_retain,
-              const char *will_topic,
-              const char *will_message,
-              smqtt_mt_client_t **client);
+smqtt_mt_connect(
+        const char *server_ip,
+        uint32_t port,
+        const char *client_id,
+        const char *user,
+        const char *pw,
+        uint16_t keep_alive_sec,
+        bool clean_session,
+        bool last_will_and_testament,
+        QoS will_qos,
+        bool will_retain,
+        const char *will_topic,
+        const char *will_message,
+        smqtt_mt_client_t **client);
 
 smqtt_mt_status_t
-smqtt_mt_ping(smqtt_mt_client_t *client,
+smqtt_mt_ping(
+        smqtt_mt_client_t *client,
         uint16_t timeout_msec,
         void (*callback)(bool, void *),
         void *cb_context);
+
+smqtt_mt_status_t
+smqtt_mt_publish(
+        smqtt_mt_client_t *client,
+        const char *topic,
+        const char *msg,
+        QoS qos,
+        bool retain,
+        void (*callback)(bool, void *),
+        void *cb_context);
+
+smqtt_mt_status_t
+smqtt_mt_subscribe(
+        smqtt_mt_client_t *client,
+        uint8_t topic_count,
+        const char **topics,
+        const QoS *qoss,
+        void (*sub_callback)(
+                bool completed,
+                uint16_t packet_id,
+                uint16_t topic_count,
+                const bool success[],
+                const QoS qoss[],
+                void *context),
+        void *sub_cb_context,
+        void (*msg_callback)(char *topic, char *msg, QoS qos, bool retain));
 
 smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client);

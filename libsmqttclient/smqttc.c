@@ -247,6 +247,7 @@ smqtt_ping(smqtt_client_t *client)
 
 smqtt_status_t
 smqtt_subscribe(smqtt_client_t *client,
+        uint16_t topic_count,
         const char **topics, const QoS *qoss)
 {
 	if (!client->connected) {
@@ -257,7 +258,8 @@ smqtt_subscribe(smqtt_client_t *client,
 
     size_t actual_len =
             make_subscribe_message(send_buffer, BUFFER_SIZE,
-                                 client->subscribe_packet_id, topics, qoss);
+                                 client->subscribe_packet_id,
+                                 topic_count, topics, qoss);
 
     smqtt_status_t stat = status_from_net(
             server_send(client->server, send_buffer, actual_len));
@@ -290,7 +292,8 @@ smqtt_subscribe(smqtt_client_t *client,
 }
 
 smqtt_status_t
-smqtt_unsubscribe(smqtt_client_t *client, const char **topics)
+smqtt_unsubscribe(smqtt_client_t *client,
+        uint16_t topic_count, const char **topics)
 {
     if (!client->connected) {
         return SMQTT_NOT_CONNECTED;
@@ -300,7 +303,8 @@ smqtt_unsubscribe(smqtt_client_t *client, const char **topics)
 
     size_t actual_len =
             make_unsubscribe_message(send_buffer, BUFFER_SIZE,
-                                   client->unsubscribe_packet_id, topics);
+                                   client->unsubscribe_packet_id,
+                                   topic_count, topics);
 
     smqtt_status_t stat =
             status_from_net(

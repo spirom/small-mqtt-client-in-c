@@ -55,6 +55,7 @@ smqtt_publish(smqtt_client_t *client,
 
 smqtt_status_t
 smqtt_subscribe(smqtt_client_t *client,
+                uint16_t topic_count,
                 const char **topics,
                 const QoS *qoss);
 
@@ -75,7 +76,8 @@ smqtt_get_next_message(smqtt_client_t *client,
 
 smqtt_status_t
 smqtt_unsubscribe(smqtt_client_t *client,
-                  const char **topics);
+        uint16_t topic_count,
+        const char **topics);
 
 
 #endif //SMQTTC_SMQTTC_H

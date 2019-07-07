@@ -98,7 +98,9 @@ typedef struct response_t {
         } subscribe_data;
         struct {
             uint16_t        packet_id;
-            QoS             qos;
+            uint16_t        topic_count;
+            bool            success[MAX_TOPICS];
+            QoS             qoss[MAX_TOPICS];
         } suback_data;
         struct {
             uint16_t        topic_lengths[MAX_TOPICS];
@@ -170,6 +172,7 @@ size_t
 make_subscribe_message(
         uint8_t *buffer, size_t length,
         uint16_t packet_id,
+        uint16_t topic_count,
         const char *topics[],
         const QoS qoss[]);
 
@@ -177,13 +180,16 @@ size_t
 make_unsubscribe_message(
         uint8_t *buffer, size_t length,
         uint16_t packet_id,
+        uint16_t topic_count,
         const char *topic[]);
 
 size_t
 make_suback_message(
         uint8_t *buffer, size_t length,
         uint16_t packet_id,
-        QoS qos);
+        uint16_t topic_count,
+        const bool success[],
+        const QoS qoss[]);
 
 size_t
 make_unsuback_message(

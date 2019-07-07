@@ -13,6 +13,27 @@ typedef struct {
     message_type_t type;
     void (*callback)(bool, void *);
     void *cb_context;
+    union {
+        struct {
+            uint16_t        packet_id;
+        } puback_data;
+        struct {
+            uint16_t        packet_id;
+        } pubrec_data;
+        struct {
+            uint16_t        packet_id;
+        } pubcomp_data;
+        struct {
+            void (*sub_callback)(
+                    bool completed,
+                    uint16_t packet_id,
+                    uint16_t topic_count,
+                    const bool success[],
+                    const QoS qoss[],
+                    void *context);
+            uint16_t        packet_id;
+        } suback_data;
+    };
 } waiting_t;
 
 typedef struct {

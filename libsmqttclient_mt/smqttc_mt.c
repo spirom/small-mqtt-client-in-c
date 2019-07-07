@@ -61,7 +61,7 @@ smqtt_mt_connect_internal(server_mode_t mode,
         }
 
         connection->port = port;
-        connection->publish_packet_id = 0u;
+        connection->publish_packet_id = 1u;
         connection->subscribe_packet_id = 1u;
         strcpy(connection->hostname, server_ip);
         strcpy(connection->clientid, client_id);
@@ -185,9 +185,7 @@ smqtt_mt_ping(smqtt_mt_client_t *client,
 
         uint8_t *buffer;
         uint16_t slot;
-
         slot = get_buffer_slot(client->session_state, &buffer);
-
         size_t actual_len =
                 make_pingreq_message(buffer, BUFFER_SIZE);
 
@@ -212,16 +210,113 @@ smqtt_mt_ping(smqtt_mt_client_t *client,
 }
 
 smqtt_mt_status_t
+smqtt_mt_publish(smqtt_mt_client_t *client,
+              const char *topic,
+              const char *msg,
+              QoS qos,
+              bool retain,
+              void (*callback)(bool, void *),
+              void *cb_context)
+{
+    if (!client->connected) {
+        return SMQTT_MT_NOT_CONNECTED;
+    } else if (qos > QoS2) {
+        return SMQTT_MT_INVALID;
+    } else {
+        uint8_t *buffer;
+        uint16_t slot;
+        slot = get_buffer_slot(client->session_state, &buffer);
+        size_t actual_len =
+                make_publish_message(buffer, BUFFER_SIZE, topic,
+                                     client->publish_packet_id, qos, retain, msg);
+
+        switch (qos) {
+            case QoS1: {
+                waiting_t *waiting = (waiting_t *) malloc(sizeof(waiting_t));
+                waiting->type = PUBACK;
+                waiting->callback = callback;
+                waiting->cb_context = cb_context;
+                waiting->puback_data.packet_id = client->publish_packet_id;
+                enqueue_waiting(client->session_state, waiting);
+                client->publish_packet_id++; // TODO: MT safety
+            }
+            break;
+            case QoS2: {
+                waiting_t *waiting = (waiting_t *) malloc(sizeof(waiting_t));
+                waiting->type = PUBREC;
+                waiting->callback = callback;
+                waiting->cb_context = cb_context;
+                waiting->pubrec_data.packet_id = client->publish_packet_id;
+                enqueue_waiting(client->session_state, waiting);
+                client->publish_packet_id++; // TODO: MT safety
+            }
+                break;
+            default:
+                // no need to enqueue anything
+                break;
+        }
+
+        smqtt_mt_status_t stat =
+                enqueue_slot_for_send(client->session_state, slot, actual_len);
+
+        if (stat != SMQTT_MT_OK) {
+            return stat;
+        }
+    }
+    return SMQTT_MT_OK;
+}
+
+smqtt_mt_status_t
+smqtt_mt_subscribe(
+        smqtt_mt_client_t *client,
+        uint8_t topic_count,
+        const char **topics,
+        const QoS *qoss,
+        void (*sub_callback)(
+                bool completed,
+                uint16_t packet_id,
+                uint16_t topic_count,
+                const bool success[],
+                const QoS qoss[],
+                void *context),
+        void *sub_cb_context,
+        void (*msg_callback)(char *topic, char *msg, QoS qos, bool retain))
+{
+    if (!client->connected) {
+        return SMQTT_MT_NOT_CONNECTED;
+    } else {
+        uint8_t *buffer;
+        uint16_t slot;
+        slot = get_buffer_slot(client->session_state, &buffer);
+        size_t actual_len =
+                make_subscribe_message(buffer, BUFFER_SIZE,
+                                       client->subscribe_packet_id,
+                                       topic_count, topics, qoss);
+        client->subscribe_packet_id++;
+
+        waiting_t *waiting = (waiting_t *) malloc(sizeof(waiting_t));
+        waiting->type = SUBACK;
+        waiting->callback = NULL;
+        waiting->cb_context = sub_cb_context;
+        waiting->suback_data.packet_id = client->publish_packet_id;
+        waiting->suback_data.sub_callback = sub_callback;
+        enqueue_waiting(client->session_state, waiting);
+        client->publish_packet_id++; // TODO: MT safety
+
+        smqtt_mt_status_t stat =
+                enqueue_slot_for_send(client->session_state, slot, actual_len);
+
+        if (stat != SMQTT_MT_OK) {
+            return stat;
+        }
+    }
+    return SMQTT_MT_OK;
+}
+
+smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client)
 {
 
-#if 0
-    struct timeval tv;
-    fprintf(stderr, "cli: sleeping 1\n");
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-    select(0, NULL, NULL, NULL, &tv);
-#endif
     fprintf(stderr, "cli: disconnecting\n");
     signal_disconnect(client->session_state);
 

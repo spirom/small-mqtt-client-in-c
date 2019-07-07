@@ -1,10 +1,13 @@
 
 # TODO
 
-* proper logging API
+off-by-1 in test count*
+proper logging API
+* callbacks should always be optional so check for NULL before calling
 
-* special send and receive queues
 * deal with memory ownership issues
+
+* BUG: header isn't read correctly if the length field is long
 
 * message types
     * publish
@@ -25,8 +28,12 @@ the responses due to a full buffer
 ## Buffers
 
 * There is a single, dedicated read buffer
-* there is a pool of buffers for use by clients for sending, and by the worker thread
-for responding to server messages
+* There is a pool of buffers for use by clients for sending
+* When the worker thread is reponding directly to a message it has just received,
+it goes ahead and sends it back through the *receive* buffer to avoid deadlock
+when the buffer pool is full
+    * Note: this requires disciplined reading of messages to make sure there
+    aren't parts of another message in the receive buffer beyond the one being processed
 
 ## Queues
 

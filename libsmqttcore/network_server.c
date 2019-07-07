@@ -128,7 +128,7 @@ network_receive(server_t *server, uint8_t *buffer, size_t length)
     server_impl_t *impl = (server_impl_t *)server->impl;
 
     struct timeval tv;
-    fprintf(stderr, "cli: sleeping 1\n");
+    fprintf(stderr, "net: sleeping 1ms\n");
     tv.tv_sec = 0;
     tv.tv_usec = 1000;
 

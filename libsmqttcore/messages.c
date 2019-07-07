@@ -10,29 +10,31 @@
 #include "messages.h"
 #include "messages_internal.h"
 
-#define PACK_MESSAGE_TYPE(M) ((uint8_t)(M << 4))
-#define UNPACK_MESSAGE_TYPE(M) ((uint8_t)(M >> 4))
+#define PACK_MESSAGE_TYPE(M) ((uint8_t)((uint8_t)M << 4u))
+#define UNPACK_MESSAGE_TYPE(M) (((uint8_t)M >> 4u))
 
-#define BOOL_TO_BIT(b) ((b) ? 0x01 : 0x00)
+#define BOOL_TO_BIT(b) ((b) ? 0x01u : 0x00u)
 
 #define PACK_CONNECT_FLAGS(user, pw, will_flag, will_qos, will_retain, clean) \
-    ( (BOOL_TO_BIT(user) << 7) | (BOOL_TO_BIT(pw) << 6) | \
-      (BOOL_TO_BIT(will_retain) << 5) | ((will_qos & 0x03) << 3) | \
-      (BOOL_TO_BIT(will_flag) << 2) | \
-      (BOOL_TO_BIT(clean) << 1) )
+    ( (BOOL_TO_BIT(user) << 7u) | (BOOL_TO_BIT(pw) << 6u) | \
+      (BOOL_TO_BIT(will_retain) << 5u) | ((will_qos & 0x03u) << 3u) | \
+      (BOOL_TO_BIT(will_flag) << 2u) | \
+      (BOOL_TO_BIT(clean) << 1u) )
 
-#define FLAGS_UNPACK_USER(bits) ((bool)((((uint8_t)bits) & 0x80) >> 7))
-#define FLAGS_UNPACK_PW(bits) ((bool)((bits & 0x40) >> 6))
-#define FLAGS_UNPACK_WILL_RETAIN(bits) ((bool)((bits & 0x20) >> 5))
-#define FLAGS_UNPACK_WILL_QOS(bits) ((QoS)((bits & 0x18) >> 3))
-#define FLAGS_UNPACK_WILL_FLAG(bits) ((bool)((bits & 0x04) >> 2))
-#define FLAGS_UNPACK_CLEAN(bits) ((bool)((bits & 0x02) >> 1))
+#define FLAGS_UNPACK_USER(bits) ((bool)((((uint8_t)bits) & 0x80u) >> 7u))
+#define FLAGS_UNPACK_PW(bits) ((bool)((bits & 0x40u) >> 6u))
+#define FLAGS_UNPACK_WILL_RETAIN(bits) ((bool)((bits & 0x20u) >> 5u))
+#define FLAGS_UNPACK_WILL_QOS(bits) ((QoS)((bits & 0x18u) >> 3u))
+#define FLAGS_UNPACK_WILL_FLAG(bits) ((bool)((bits & 0x04u) >> 2u))
+#define FLAGS_UNPACK_CLEAN(bits) ((bool)((bits & 0x02u) >> 1u))
 
+#define QOS_RETURN_OK(bits) ((bits & 0xFCu) == 0u)
+#define QOS_RETURN_QOS(bits) ((QoS)(bits & 0x3u))
 
 static uint16_t
 short_from_buffer(const uint8_t *buffer)
 {
-    uint16_t net_short = (uint16_t)(buffer[0] << 16) | (uint16_t)buffer[1];
+    uint16_t net_short = (uint16_t)(buffer[0] << 16u) | (uint16_t)buffer[1];
     return net_short;
 }
 
@@ -50,8 +52,8 @@ typedef struct cursor {
 #define SER_byte(cursor, b) {*(cursor.current++) = b;}
 
 // for pulling apart a uint16_t
-#define MSB(A) ((uint8_t)((A & 0xFF00) >> 8))
-#define LSB(A) ((uint8_t)(A & 0x00FF))
+#define MSB(A) ((uint8_t)(((uint8_t)A & 0xFF00u) >> 8u))
+#define LSB(A) ((uint8_t)((uint8_t)A & 0x00FFu))
 
 #define SER_short(cursor, s) { \
     *(cursor.current++) = MSB(s); \
@@ -81,7 +83,7 @@ encode_size(size_t size, uint8_t *buffer, uint8_t *bytes_used)
         uint8_t digit = remaining_size % 128;
         remaining_size = remaining_size / 128;
         if (remaining_size > 0) {
-            digit = digit | 0x80;
+            digit = digit | 0x80u;
         }
         buffer[used] = digit;
         used++;
@@ -97,7 +99,8 @@ encode_size(size_t size, uint8_t *buffer, uint8_t *bytes_used)
 
 
 bool
-decode_size(uint8_t *buffer, uint8_t *buffer_end, size_t *size, uint8_t *bytes_used)
+decode_size(uint8_t *buffer, const uint8_t *buffer_end,
+        size_t *size, uint8_t *bytes_used)
 {
     size_t multiplier = 1;
     size_t value = 0;
@@ -106,13 +109,13 @@ decode_size(uint8_t *buffer, uint8_t *buffer_end, size_t *size, uint8_t *bytes_u
     while (buffer <= buffer_end && used < 4) {
         digit = *buffer;
         buffer++;
-        value += (digit & 127) * multiplier;
+        value += (digit & 127u) * multiplier;
         multiplier *= 128;
         used++;
-        if (! (digit & 0x80)) break;
+        if (! (digit & 0x80u)) break;
     }
     *bytes_used = used;
-    if ((used == 4) && (digit & 0x80)) {
+    if ((used == 4) && (digit & 0x80u)) {
         // incorrect encoding or not enough buffer
         return false;
     } else {
@@ -134,8 +137,8 @@ static uint16_t
 fill_topic_arrays(const uint8_t *buffer, uint32_t bytecount,
                   uint16_t *lengths, char **values, QoS *qoss)
 {
-    const char *max = buffer + bytecount;
-    const char *curr = buffer;
+    const uint8_t *max = buffer + bytecount;
+    const uint8_t *curr = buffer;
     int position = 0;
     while ((curr + 2) <= max && position < MAX_TOPICS) {
         // invariant: have space for a length, which could be 0
@@ -151,6 +154,22 @@ fill_topic_arrays(const uint8_t *buffer, uint32_t bytecount,
         if (qoss != NULL) {
             curr++;
         }
+    }
+    return position;
+}
+
+static uint16_t
+fill_subresult_arrays(const uint8_t *buffer, uint32_t bytecount,
+                    bool *success, QoS *qoss)
+{
+    const uint8_t *max = buffer + bytecount;
+    const uint8_t *curr = buffer;
+    int position = 0;
+    while ((curr + 1) <= max && position < MAX_TOPICS) {
+        success[position] = QOS_RETURN_OK(*curr);
+        qoss[position] = QOS_RETURN_QOS(*curr);
+        position++;
+        curr++;
     }
     return position;
 }
@@ -225,8 +244,8 @@ deserialize_response(uint8_t *buffer, size_t length)
             break;
         case PUBLISH: {
             size_t saved_offset = offset;
-            resp->body.publish_data.qos = (buffer[0] >> 1) & 0x03;
-            resp->body.publish_data.retain = (buffer[0]) & 0x01;
+            resp->body.publish_data.qos = (buffer[0] >> 1u) & 0x03u;
+            resp->body.publish_data.retain = (buffer[0]) & 0x01u;
 
             resp->body.publish_data.topic_size = short_from_buffer(buffer + offset);
             offset += 2;
@@ -268,7 +287,14 @@ deserialize_response(uint8_t *buffer, size_t length)
         }
         case SUBACK:
             resp->body.suback_data.packet_id = short_from_buffer(buffer + offset);
-            resp->body.suback_data.qos = buffer[offset + 2];
+            uint32_t subresult_segment_size = total_size - offset;
+            offset += 2;
+            resp->body.suback_data.topic_count =
+                    fill_subresult_arrays(
+                            buffer + offset,
+                            subresult_segment_size,
+                            resp->body.suback_data.success,
+                            resp->body.suback_data.qoss);
             break;
         case UNSUBSCRIBE:
             resp->body.unsubscribe_data.packet_id = short_from_buffer(buffer + offset);
@@ -413,7 +439,7 @@ make_publish_message(uint8_t *buffer, size_t length,
 {
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, ( PACK_MESSAGE_TYPE(PUBLISH) | (qos << 1) | (retain & 0x1)) );
+    SER_byte(cursor, ( PACK_MESSAGE_TYPE(PUBLISH) | (qos << 1u) | (retain & 0x1u)) );
     size_t packet_id_len = 0;
     if (qos >= QoS1) {
         packet_id_len = 2;
@@ -470,7 +496,7 @@ make_pubrel_message(
 {
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREL) | (QoS1 << 1) )
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREL) | (QoS1 << 1u) )
     SER_len(cursor, 2)
     SER_short(cursor, packet_id)
 
@@ -493,17 +519,20 @@ make_pubcomp_message(
 
 
 /**
- * Sum up UTF-8 tring lengths of a NULL-terminated array of strings.
- * @param topic
+ * Sum up UTF-8 tring lengths of a arrays of strings,
+ * optionally including QoS settings.
+ * @param topic_count
+ * @param topics
  * @param include_qos add an extra byte for QoS on each topic?
  * @return
  */
+
 static uint16_t
-get_utf8_string_size(const char *topics[], bool include_qos)
+get_utf8_string_size(uint16_t topic_count, const char *topics[], bool include_qos)
 {
     uint16_t total = 0;
-    for (const char **curr = topics; *curr != NULL; curr++) {
-        total += 2 + strlen(*curr);
+    for (uint16_t i = 0; i < topic_count; i++) {
+        total += 2 + strlen(topics[i]);
         if (include_qos) total++;
     }
     return total;
@@ -512,24 +541,21 @@ get_utf8_string_size(const char *topics[], bool include_qos)
 size_t
 make_subscribe_message(uint8_t *buffer, size_t length,
                        uint16_t packet_id,
+                       uint16_t topic_count,
                        const char *topics[],
                        const QoS qoss[])
 {
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer)
     // NOTE: qos below is independent of qos parameter, and always QoS1
-    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBSCRIBE) | (QoS1 << 1) )
-    SER_len(cursor, 2 + get_utf8_string_size(topics, true))
+    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBSCRIBE) | (QoS1 << 1u) )
+    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, true))
     SER_short(cursor, packet_id)
 
-    const char **curr_topic;
-    const QoS *curr_qos;
-    for (curr_topic = topics, curr_qos = qoss;
-        *curr_topic != NULL;
-        curr_topic++, curr_qos++) {
-        SER_short(cursor, strlen(*curr_topic))
-        SER_string(cursor, *curr_topic)
-        SER_byte(cursor, *curr_qos)
+    for (uint16_t position = 0; position < topic_count; position++) {
+        SER_short(cursor, strlen(topics[position]))
+        SER_string(cursor, topics[position])
+        SER_byte(cursor, qoss[position])
     }
 
     return CURSOR_POSITION(cursor);
@@ -539,14 +565,18 @@ size_t
 make_suback_message(
         uint8_t *buffer, size_t length,
         uint16_t packet_id,
-        QoS qos)
+        uint16_t topic_count,
+        const bool success[],
+        const QoS qoss[])
 {
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer)
     SER_byte(cursor, PACK_MESSAGE_TYPE(SUBACK))
-    SER_len(cursor, 2 + 1)
+    SER_len(cursor, 2 + topic_count)
     SER_short(cursor, packet_id)
-    SER_byte(cursor, qos)
+    for (uint16_t i = 0; i < topic_count; i++) {
+        SER_byte(cursor, success[i] ? qoss[i] : 0x80)
+    }
 
     return CURSOR_POSITION(cursor);
 }
@@ -555,18 +585,19 @@ size_t
 make_unsubscribe_message(
         uint8_t *buffer, size_t length,
         uint16_t packet_id,
+        uint16_t topic_count,
         const char *topics[])
 {
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer)
     // NOTE: qos below is independent of qos parameter, and always QoS1
-    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBSCRIBE) | (QoS1 << 1) )
-    SER_len(cursor, 2 + get_utf8_string_size(topics, false))
+    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBSCRIBE) | (QoS1 << 1u) )
+    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, false))
     SER_short(cursor, packet_id)
 
-    for (const char **curr = topics; *curr != NULL; curr++) {
-        SER_short(cursor, strlen(*curr))
-        SER_string(cursor, *curr)
+    for (uint16_t i = 0; i < topic_count; i++) {
+        SER_short(cursor, strlen(topics[i]))
+        SER_string(cursor, topics[i])
     }
 
     return CURSOR_POSITION(cursor);

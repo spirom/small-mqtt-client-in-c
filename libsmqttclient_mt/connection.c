@@ -48,6 +48,76 @@ dequeue(queue_t *queue, void **payload)
 }
 
 void
+remove_from_queue(queue_t *queue, queue_entry_t *entry)
+{
+    if (entry->previous == NULL) {
+        queue->head = entry->next;
+    } else {
+        entry->previous->next = entry->next;
+    }
+
+    if (entry->next == NULL) {
+        queue->tail = entry->previous;
+    } else {
+        entry->next->previous = entry->previous;
+    }
+}
+
+bool
+dequeue_by_type_and_id(
+        queue_t *queue,
+        message_type_t type,
+        uint16_t packet_id,
+        waiting_t **waiting) {
+    if (queue->head != NULL) {
+        queue_entry_t *curr_entry = queue->head;
+        while (curr_entry != NULL) {
+            waiting_t *curr_waiting = (waiting_t *) curr_entry->payload;
+            if (curr_waiting->type == type) {
+                switch (type) {
+                    case PUBACK:
+                        if (curr_waiting->puback_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        break;
+                    case PUBREC:
+                        if (curr_waiting->pubrec_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        break;
+                    case PUBCOMP:
+                        if (curr_waiting->pubcomp_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        break;
+                    case PINGRESP:
+                        *waiting = curr_waiting;
+                        remove_from_queue(queue, curr_entry);
+                        return true;
+                    case SUBACK:
+                        if (curr_waiting->suback_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        return true;
+                    default:
+                        break;
+                }
+            }
+            curr_entry = curr_entry->next;
+        }
+    }
+    return false;
+}
+
+void
 enqueue(queue_t *queue, void *payload)
 {
     queue_entry_t *entry = malloc(sizeof(queue_entry_t));
@@ -182,12 +252,108 @@ session_thread_loop(void *arg)
                     deserialize_response(session_state->receive_buffer, sz);
             switch (resp->type) {
                 case PINGRESP: {
-                    // TODO may not be the right one
                     waiting_t *waiting;
+                    status = pthread_mutex_lock(&session_state->thread_mutex);
                     bool found =
-                            dequeue(&session_state->ack_queue, (void **) &waiting);
+                            dequeue_by_type_and_id(
+                                    &session_state->ack_queue,
+                                    PINGRESP,
+                                    0l,
+                                    &waiting);
+                    status = pthread_mutex_unlock(&session_state->thread_mutex);
                     if (found) {
                         waiting->callback(true, waiting->cb_context);
+                        free(waiting);
+                    }
+                }
+                    break;
+                case PUBACK: {
+                    // Qos1 case, callback but no response
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    bool found = dequeue_by_type_and_id(
+                            &session_state->ack_queue,
+                            PUBACK,
+                            resp->body.puback_data.packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    if (found) {
+                        waiting->callback(true, waiting->cb_context);
+                        free(waiting);
+                    }
+                }
+                    break;
+                case PUBREC: {
+                    // QoS2 case part 1: response but no callback yet
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    uint16_t packet_id = resp->body.pubrec_data.packet_id;
+                    bool found = dequeue_by_type_and_id(
+                            &session_state->ack_queue,
+                            PUBREC,
+                            packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    if (found) {
+                        // no locking needed for this part as we are using the
+                        // private buffer
+
+
+                        size_t actual_len =
+                                make_pubrel_message(
+                                        session_state->receive_buffer,
+                                        session_state->buffer_size,
+                                        packet_id);
+                        smqtt_mt_status_t stat =
+                                status_from_net(
+                                        server_send(
+                                                session_state->server,
+                                                session_state->receive_buffer,
+                                                actual_len));
+                        if (stat == SMQTT_MT_OK) {
+                            // just reuse the existing one without abusing union
+                            // semantics
+                            waiting->type = PUBCOMP;
+                            waiting->pubcomp_data.packet_id = packet_id;
+                            // this locks under the hood so we're fine
+                            enqueue_waiting(session_state, waiting);
+                        }
+                    }
+                }
+                case PUBCOMP: {
+                    // QoS2 case part 2: finally do the callback
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    bool found = dequeue_by_type_and_id(
+                            &session_state->ack_queue,
+                            PUBCOMP,
+                            resp->body.pubcomp_data.packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    if (found) {
+                        waiting->callback(true, waiting->cb_context);
+                        free(waiting);
+                    }
+                }
+                    break;
+                case SUBACK: {
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&session_state->thread_mutex);
+                    bool found = dequeue_by_type_and_id(
+                            &session_state->ack_queue,
+                            SUBACK,
+                            resp->body.suback_data.packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&session_state->thread_mutex);
+                    if (found && (waiting->suback_data.sub_callback != NULL)) {
+                        waiting->suback_data.sub_callback(
+                                true,
+                                resp->body.suback_data.packet_id,
+                                resp->body.suback_data.topic_count,
+                                resp->body.suback_data.success,
+                                resp->body.suback_data.qoss,
+                                waiting->cb_context);
+                        free(waiting);
                     }
                 }
                     break;

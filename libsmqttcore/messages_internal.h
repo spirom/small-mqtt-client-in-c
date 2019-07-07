@@ -26,6 +26,7 @@ encode_size(size_t size, uint8_t *buffer, uint8_t *bytes_used);
  * @return Whether a value could successfully be decoded from the given buffer.
  */
 bool
-decode_size(uint8_t *buffer, uint8_t *buffer_end, size_t *size, uint8_t *bytes_used);
+decode_size(uint8_t *buffer, const uint8_t *buffer_end,
+        size_t *size, uint8_t *bytes_used);
 
 #endif //SMQTTC_MESSAGES_INTERNAL_H

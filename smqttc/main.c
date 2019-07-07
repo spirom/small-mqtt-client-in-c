@@ -192,9 +192,9 @@ int main (int argc, char** argv)
             }
 
             case SUBSCRIBE: {
-                const char *topics[] = {topic, NULL};
+                const char *topics[] = {topic};
                 const QoS qoss[] = {qos};
-                smqtt_status_t stat = smqtt_subscribe(client, topics, qoss);
+                smqtt_status_t stat = smqtt_subscribe(client, 1, topics, qoss);
 
                 if (stat != SMQTT_OK) {
                     fprintf(stderr, "Failed to Subscribe\n");

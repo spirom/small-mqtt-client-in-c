@@ -49,7 +49,7 @@ test_basic_v3_qos0()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"test_topic", NULL};
+    static const char *topics[] = {"test_topic"};
     static QoS qoss[] = { QoS0 };
 
     smqtt_client_t *client1 = NULL;
@@ -70,7 +70,7 @@ test_basic_v3_qos0()
 
     ASSERT_TRUE(status == SMQTT_OK, result)
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     static char *message1 = "hello1";
@@ -100,7 +100,7 @@ test_message_backlog_v3_qos0()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"test_topic", NULL};
+    static const char *topics[] = { "test_topic" };
     static QoS qoss[] = { QoS0 };
 
     smqtt_client_t *client1 = NULL;
@@ -117,7 +117,7 @@ test_message_backlog_v3_qos0()
                                                    &client2);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     static char *message1 = "hello1";
@@ -159,7 +159,7 @@ test_basic_v3_qos1()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"test_topic", NULL};
+    static const char *topics[] = { "test_topic" };
     static QoS qoss[] = { QoS1 };
 
     smqtt_client_t *client1 = NULL;
@@ -176,7 +176,7 @@ test_basic_v3_qos1()
                                                    &client2);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     static char *message1 = "hello1";
@@ -206,7 +206,7 @@ test_basic_v3_qos2_qos2()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"test_topic", NULL};
+    static const char *topics[] = { "test_topic" };
     static QoS qoss[] = { QoS2 };
 
     smqtt_client_t *client1 = NULL;
@@ -223,7 +223,7 @@ test_basic_v3_qos2_qos2()
                                                    &client2);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     static char *message1 = "hello1";
@@ -298,14 +298,14 @@ test_unsubscribe_v3()
 
     const char *topic1 = "topic1";
     const char *topic2 = "longer/topic2";
-    const char *topics[] = { topic1 , topic2, NULL };
+    const char *topics[] = { topic1, topic2 };
     static QoS qoss[] = { QoS2, QoS2 };
 
 
-    status = smqtt_subscribe(client1, topics, qoss);
+    status = smqtt_subscribe(client1, 2, topics, qoss);
     ASSERT_TRUE(status == 0, result)
 
-    status = smqtt_unsubscribe(client1, topics);
+    status = smqtt_unsubscribe(client1, 2, topics);
     ASSERT_TRUE(status == 0, result)
 
     smqtt_disconnect(client1);
@@ -319,7 +319,7 @@ test_pubsub_retain_v3()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"test_topic", NULL};
+    static const char *topics[] = { "test_topic" };
     static QoS qoss[] = { QoS2 };
 
     smqtt_client_t *client1 = NULL;
@@ -340,7 +340,7 @@ test_pubsub_retain_v3()
                                                    &client2);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     uint16_t packet_id = 0u; // so we can check it
@@ -370,7 +370,7 @@ test_pubsub_will_v3()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"willtopic", NULL};
+    static const char *topics[] = { "willtopic" };
     static QoS qoss[] = { QoS2 };
 
     smqtt_client_t *client1 = NULL;
@@ -391,7 +391,7 @@ test_pubsub_will_v3()
                                                    false, QoS0, false, NULL, NULL,
                                                    &client2);
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == SMQTT_OK, result)
 
     // simulate sudden disappearance of first client
@@ -421,7 +421,7 @@ test_pubsub_will_retained_v3()
     test_result_t result;
     init_result(&result);
 
-    static const char *topics[] = {"willtopic", NULL};
+    static const char *topics[] = { "willtopic" };
     static QoS qoss[] = { QoS2 };
 
     smqtt_client_t *client1 = NULL;
@@ -445,7 +445,7 @@ test_pubsub_will_retained_v3()
     // simulate sudden disappearance of first client
     mqtt_drop(client1);
 
-    status = smqtt_subscribe(client2, topics, qoss);
+    status = smqtt_subscribe(client2, 1, topics, qoss);
     ASSERT_TRUE(status == 0, result)
 
     // now this client should get a last will & testament as it was retained

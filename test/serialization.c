@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <messages.h>
 
 #include "messages.h"
 #include "messages_internal.h"
@@ -314,11 +315,11 @@ test_subscribe_message_v3()
 
     const char *topic1 = "topic1";
     const char *topic2 = "longer/topic2";
-    const char *topics[] = { topic1 , topic2, NULL };
+    const char *topics[] = { topic1 , topic2 };
     QoS qoss[] = { QoS2, QoS1 };
 
     size_t send_size =
-            make_subscribe_message(buffer, BUFFER_SIZE, 88, topics, qoss);
+            make_subscribe_message(buffer, BUFFER_SIZE, 88, 2, topics, qoss);
     ASSERT_TRUE(send_size >= 0, result)
 
     response_t *message = deserialize_response(buffer, send_size);
@@ -349,10 +350,10 @@ test_unsubscribe_message_v3()
 
     const char *topic1 = "topic1";
     const char *topic2 = "longer/topic2";
-    const char *topics[] = { topic1 , topic2, NULL };
+    const char *topics[] = { topic1 , topic2 };
 
     size_t send_size =
-            make_unsubscribe_message(buffer, BUFFER_SIZE, 88, topics);
+            make_unsubscribe_message(buffer, BUFFER_SIZE, 88, 2, topics);
     ASSERT_TRUE(send_size >= 0, result)
 
     response_t *message = deserialize_response(buffer, send_size);
@@ -377,14 +378,53 @@ test_suback_message_v3()
 
     char buffer[BUFFER_SIZE];
 
+    bool success[] = { true };
+    QoS qoss[] = { QoS2 };
+
     size_t send_size =
-            make_suback_message(buffer, BUFFER_SIZE, 99, QoS2);
+            make_suback_message(buffer, BUFFER_SIZE, 99, 1, success, qoss);
     ASSERT_TRUE(send_size >= 0, result)
 
     response_t *message = deserialize_response(buffer, send_size);
     ASSERT_TRUE(message->type == SUBACK, result)
     ASSERT_TRUE(message->body.suback_data.packet_id == 99, result)
-    ASSERT_TRUE(message->body.suback_data.qos == QoS2, result)
+    ASSERT_TRUE(message->body.suback_data.topic_count == 1, result)
+    ASSERT_TRUE(message->body.suback_data.success[0], result)
+    ASSERT_TRUE(message->body.suback_data.qoss[0] == QoS2, result)
+
+    return result;
+}
+
+test_result_t
+test_suback_message_mixed_v3()
+{
+    test_result_t result;
+    init_result(&result);
+
+    char buffer[BUFFER_SIZE];
+
+    bool success[] = { true, false, true, true };
+    QoS qoss[] = { QoS2, QoS0, QoS1, QoS0 };
+
+    size_t send_size =
+            make_suback_message(buffer, BUFFER_SIZE, 99, 4, success, qoss);
+    ASSERT_TRUE(send_size >= 0, result)
+
+    response_t *message = deserialize_response(buffer, send_size);
+    ASSERT_TRUE(message->type == SUBACK, result)
+    ASSERT_TRUE(message->body.suback_data.packet_id == 99, result)
+    ASSERT_TRUE(message->body.suback_data.topic_count == 4, result)
+
+    ASSERT_TRUE(message->body.suback_data.success[0], result)
+    ASSERT_TRUE(message->body.suback_data.qoss[0] == QoS2, result)
+
+    ASSERT_TRUE(message->body.suback_data.success[1] == false, result)
+
+    ASSERT_TRUE(message->body.suback_data.success[2], result)
+    ASSERT_TRUE(message->body.suback_data.qoss[2] == QoS1, result)
+
+    ASSERT_TRUE(message->body.suback_data.success[3], result)
+    ASSERT_TRUE(message->body.suback_data.qoss[3] == QoS0, result)
 
     return result;
 }
