@@ -71,7 +71,7 @@ smqtt_mt_status_t
 smqtt_mt_subscribe(
         smqtt_mt_client_t *client,
         uint8_t topic_count,
-        const char **topics,
+        const char *topics[],
         const QoS *qoss,
         void (*sub_callback)(
                 bool completed,
@@ -81,6 +81,14 @@ smqtt_mt_subscribe(
                 const QoS qoss[],
                 void *context),
         void *sub_cb_context);
+
+smqtt_mt_status_t
+smqtt_mt_unsubscribe(
+        smqtt_mt_client_t *client,
+        uint8_t topic_count,
+        const char **topics,
+        void (*callback)(bool, void *),
+        void *cb_context);
 
 smqtt_mt_status_t
 smqtt_mt_disconnect(smqtt_mt_client_t *client);

@@ -14,18 +14,22 @@
 #define BUFFER_SIZE 1024
 
 #define ASSERT_TRUE(expr, result) \
-    if (result.success && !(expr)) { \
-        result.success = false; \
-        result.line = __LINE__; \
-        strncpy(result.e, #expr, MAX_TEXT); \
-    }
+    do { \
+        if (result.success && !(expr)) { \
+            result.success = false; \
+            result.line = __LINE__; \
+            strncpy(result.e, #expr, MAX_TEXT); \
+        } \
+    } while (0)
 
 #define ASSERT_FALSE(expr, result) \
-    if (result.success && (expr)) { \
-        result.success = false; \
-        result.line = __LINE__; \
-        strncpy(result.e, #expr, MAX_TEXT); \
-    }
+    do { \
+        if (result.success && (expr)) { \
+            result.success = false; \
+            result.line = __LINE__; \
+            strncpy(result.e, #expr, MAX_TEXT); \
+        } \
+    } while (0)
 
 typedef struct test_result_t {
     bool            success;

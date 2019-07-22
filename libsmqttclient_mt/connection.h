@@ -24,6 +24,12 @@ typedef struct {
             uint16_t        packet_id;
         } pubcomp_data;
         struct {
+            char *          topic;
+            char *          msg;
+            bool            retain;
+            uint16_t        packet_id;
+        } pubrel_data;
+        struct {
             void (*sub_callback)(
                     bool completed,
                     uint16_t packet_id,
@@ -33,6 +39,9 @@ typedef struct {
                     void *context);
             uint16_t        packet_id;
         } suback_data;
+        struct {
+            uint16_t        packet_id;
+        } unsuback_data;
     };
 } waiting_t;
 

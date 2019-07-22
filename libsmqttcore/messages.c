@@ -47,30 +47,32 @@ typedef struct cursor {
 
 #define CURSOR_POSITION(cursor) (cursor.current - cursor.base)
 
-#define CURSOR_INIT(cursor, origin) { cursor.base = cursor.current = origin; }
+#define CURSOR_INIT(cursor, origin) do { \
+    cursor.base = cursor.current = origin; \
+} while (false)
 
-#define SER_byte(cursor, b) {*(cursor.current++) = b;}
+#define SER_byte(cursor, b) do {*(cursor.current++) = b;} while (false)
 
 // for pulling apart a uint16_t
 #define MSB(A) ((uint8_t)(((uint8_t)A & 0xFF00u) >> 8u))
 #define LSB(A) ((uint8_t)((uint8_t)A & 0x00FFu))
 
-#define SER_short(cursor, s) { \
+#define SER_short(cursor, s) do { \
     *(cursor.current++) = MSB(s); \
     *(cursor.current++) = LSB(s); \
-}
+} while (false)
 
-#define SER_string(cursor, str) { \
+#define SER_string(cursor, str) do { \
     size_t len = strlen(str); \
     strncpy(cursor.current, str, len); \
     cursor.current += len; \
-}
+} while (false)
 
-#define SER_len(cursor, len) { \
+#define SER_len(cursor, len) do { \
     uint8_t used; \
     encode_size(len, cursor.current, &used); \
     cursor.current += used; \
-}
+} while (false)
 
 static const uint16_t no_packet_id = 0U;
 
@@ -356,7 +358,7 @@ make_connect_message(uint8_t *buffer, size_t length,
     cursor_t cursor;
     CURSOR_INIT(cursor, buffer);
     // fixed header
-    SER_byte(cursor, PACK_MESSAGE_TYPE(CONNECT))
+    SER_byte(cursor, PACK_MESSAGE_TYPE(CONNECT));
     size_t len = 8 + protocol_name_len + client_id_len;
     if (last_will_and_testament) {
         will_topic_len = strlen(will_topic);
@@ -371,33 +373,33 @@ make_connect_message(uint8_t *buffer, size_t length,
         pw_len = strlen(pw);
         len += 2 + pw_len;
     }
-    SER_len(cursor, len)
+    SER_len(cursor, len);
     // var header -- protocol name
-    SER_short(cursor, protocol_name_len)
-    SER_string(cursor, protocol_name)
+    SER_short(cursor, protocol_name_len);
+    SER_string(cursor, protocol_name);
     // var header -- protocol level
-    SER_byte(cursor, protocol_level)
+    SER_byte(cursor, protocol_level);
     uint8_t connect_flags =
             PACK_CONNECT_FLAGS((user != NULL), (pw != NULL),
                     last_will_and_testament, will_qos, will_retain, clean_session);
-    SER_byte(cursor, connect_flags)
-    SER_short(cursor, keep_alive_sec)
+    SER_byte(cursor, connect_flags);
+    SER_short(cursor, keep_alive_sec);
     // payload -- just client id for now
-    SER_short(cursor, client_id_len)
-    SER_string(cursor, clientid)
+    SER_short(cursor, client_id_len);
+    SER_string(cursor, clientid);
     if (last_will_and_testament) {
-        SER_short(cursor, will_topic_len)
-        SER_string(cursor, will_topic)
-        SER_short(cursor, will_message_len)
-        SER_string(cursor, will_message)
+        SER_short(cursor, will_topic_len);
+        SER_string(cursor, will_topic);
+        SER_short(cursor, will_message_len);
+        SER_string(cursor, will_message);
     }
     if (user != NULL) {
-        SER_short(cursor, user_len)
-        SER_string(cursor, user)
+        SER_short(cursor, user_len);
+        SER_string(cursor, user);
     }
     if (pw != NULL) {
-        SER_short(cursor, pw_len)
-        SER_string(cursor, pw)
+        SER_short(cursor, pw_len);
+        SER_string(cursor, pw);
     }
 
     size_t total_size = CURSOR_POSITION(cursor);
@@ -410,11 +412,11 @@ make_connack_message(
         connack_msg_t type)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(CONNACK))
-    SER_len(cursor, 2)
-    SER_byte(cursor, 0)
-    SER_byte(cursor, type)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(CONNACK));
+    SER_len(cursor, 2);
+    SER_byte(cursor, 0);
+    SER_byte(cursor, type);
 
     return CURSOR_POSITION(cursor);
 }
@@ -423,9 +425,9 @@ size_t
 make_disconnect_message(uint8_t *buffer, size_t length)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(DISCONNECT))
-    SER_byte(cursor, 0)
+    CURSOR_INIT(cursor, buffer);;
+    SER_byte(cursor, PACK_MESSAGE_TYPE(DISCONNECT));
+    SER_byte(cursor, 0);
     return CURSOR_POSITION(cursor);
 }
 
@@ -438,7 +440,7 @@ make_publish_message(uint8_t *buffer, size_t length,
                      const char *msg)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
+    CURSOR_INIT(cursor, buffer);
     SER_byte(cursor, ( PACK_MESSAGE_TYPE(PUBLISH) | (qos << 1u) | (retain & 0x1u)) );
     size_t packet_id_len = 0;
     if (qos >= QoS1) {
@@ -448,14 +450,14 @@ make_publish_message(uint8_t *buffer, size_t length,
     if (msg != NULL) {
         message_len = strlen(msg);
     }
-    SER_len(cursor, (2 + strlen(topic) + packet_id_len + message_len))
-    SER_short(cursor, strlen(topic))
-    SER_string(cursor, topic)
+    SER_len(cursor, (2 + strlen(topic) + packet_id_len + message_len));
+    SER_short(cursor, strlen(topic));
+    SER_string(cursor, topic);
     if (qos >= QoS1) {
-        SER_short(cursor, packet_id)
+        SER_short(cursor, packet_id);
     }
     if (msg != NULL) {
-        SER_string(cursor, msg)
+        SER_string(cursor, msg);
     }
 
     return CURSOR_POSITION(cursor);
@@ -467,10 +469,10 @@ make_puback_message(
         uint16_t packet_id)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBACK))
-    SER_len(cursor, 2)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBACK));
+    SER_len(cursor, 2);
+    SER_short(cursor, packet_id);
 
     return CURSOR_POSITION(cursor);
 }
@@ -481,10 +483,10 @@ make_pubrec_message(
         uint16_t packet_id)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREC))
-    SER_len(cursor, 2)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREC));
+    SER_len(cursor, 2);
+    SER_short(cursor, packet_id);
 
     return CURSOR_POSITION(cursor);
 }
@@ -495,10 +497,10 @@ make_pubrel_message(
         uint16_t packet_id)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREL) | (QoS1 << 1u) )
-    SER_len(cursor, 2)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBREL) | (QoS1 << 1u) );
+    SER_len(cursor, 2);
+    SER_short(cursor, packet_id);
 
     return CURSOR_POSITION(cursor);
 }
@@ -509,10 +511,10 @@ make_pubcomp_message(
         uint16_t packet_id)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBCOMP))
-    SER_len(cursor, 2)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PUBCOMP));
+    SER_len(cursor, 2);
+    SER_short(cursor, packet_id);
 
     return CURSOR_POSITION(cursor);
 }
@@ -546,16 +548,16 @@ make_subscribe_message(uint8_t *buffer, size_t length,
                        const QoS qoss[])
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
+    CURSOR_INIT(cursor, buffer);
     // NOTE: qos below is independent of qos parameter, and always QoS1
-    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBSCRIBE) | (QoS1 << 1u) )
-    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, true))
-    SER_short(cursor, packet_id)
+    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBSCRIBE) | (QoS1 << 1u) );
+    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, true));
+    SER_short(cursor, packet_id);
 
     for (uint16_t position = 0; position < topic_count; position++) {
-        SER_short(cursor, strlen(topics[position]))
-        SER_string(cursor, topics[position])
-        SER_byte(cursor, qoss[position])
+        SER_short(cursor, strlen(topics[position]));
+        SER_string(cursor, topics[position]);
+        SER_byte(cursor, qoss[position]);
     }
 
     return CURSOR_POSITION(cursor);
@@ -570,12 +572,12 @@ make_suback_message(
         const QoS qoss[])
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBACK))
-    SER_len(cursor, 2 + topic_count)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(SUBACK));
+    SER_len(cursor, 2 + topic_count);
+    SER_short(cursor, packet_id);
     for (uint16_t i = 0; i < topic_count; i++) {
-        SER_byte(cursor, success[i] ? qoss[i] : 0x80)
+        SER_byte(cursor, success[i] ? qoss[i] : 0x80);
     }
 
     return CURSOR_POSITION(cursor);
@@ -589,15 +591,15 @@ make_unsubscribe_message(
         const char *topics[])
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
+    CURSOR_INIT(cursor, buffer);
     // NOTE: qos below is independent of qos parameter, and always QoS1
-    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBSCRIBE) | (QoS1 << 1u) )
-    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, false))
-    SER_short(cursor, packet_id)
+    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBSCRIBE) | (QoS1 << 1u) );
+    SER_len(cursor, 2 + get_utf8_string_size(topic_count, topics, false));
+    SER_short(cursor, packet_id);
 
     for (uint16_t i = 0; i < topic_count; i++) {
-        SER_short(cursor, strlen(topics[i]))
-        SER_string(cursor, topics[i])
+        SER_short(cursor, strlen(topics[i]));
+        SER_string(cursor, topics[i]);
     }
 
     return CURSOR_POSITION(cursor);
@@ -609,10 +611,10 @@ make_unsuback_message(
         uint16_t packet_id)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBACK))
-    SER_len(cursor, 2u)
-    SER_short(cursor, packet_id)
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(UNSUBACK));
+    SER_len(cursor, 2u);
+    SER_short(cursor, packet_id);
 
     return CURSOR_POSITION(cursor);
 }
@@ -622,9 +624,9 @@ make_pingreq_message(
         uint8_t *buffer, size_t length)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
+    CURSOR_INIT(cursor, buffer);
     SER_byte(cursor, PACK_MESSAGE_TYPE(PINGREQ));
-    SER_len(cursor, 0u)
+    SER_len(cursor, 0u);
 
     return CURSOR_POSITION(cursor);
 }
@@ -634,8 +636,8 @@ make_pingresp_message(
         uint8_t *buffer, size_t length)
 {
     cursor_t cursor;
-    CURSOR_INIT(cursor, buffer)
-    SER_byte(cursor, PACK_MESSAGE_TYPE(PINGRESP))
+    CURSOR_INIT(cursor, buffer);
+    SER_byte(cursor, PACK_MESSAGE_TYPE(PINGRESP));
     SER_len(cursor, 0u);
 
     return CURSOR_POSITION(cursor);

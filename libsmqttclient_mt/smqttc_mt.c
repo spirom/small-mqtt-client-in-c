@@ -251,6 +251,8 @@ smqtt_mt_publish(smqtt_mt_client_t *client,
                 make_publish_message(buffer, BUFFER_SIZE, topic,
                                      client->publish_packet_id, qos, retain, msg);
 
+        // note: callbacks not supported for QoS0
+
         switch (qos) {
             case QoS1: {
                 waiting_t *waiting = (waiting_t *) malloc(sizeof(waiting_t));
@@ -291,7 +293,7 @@ smqtt_mt_status_t
 smqtt_mt_subscribe(
         smqtt_mt_client_t *client,
         uint8_t topic_count,
-        const char **topics,
+        const char *topics[],
         const QoS *qoss,
         void (*sub_callback)(
                 bool completed,
@@ -312,7 +314,7 @@ smqtt_mt_subscribe(
                 make_subscribe_message(buffer, BUFFER_SIZE,
                                        client->subscribe_packet_id,
                                        topic_count, topics, qoss);
-        client->subscribe_packet_id++;
+        client->subscribe_packet_id++; // TODO: MT safety
 
         waiting_t *waiting = (waiting_t *) malloc(sizeof(waiting_t));
         waiting->type = SUBACK;
@@ -321,7 +323,43 @@ smqtt_mt_subscribe(
         waiting->suback_data.packet_id = client->publish_packet_id;
         waiting->suback_data.sub_callback = sub_callback;
         enqueue_waiting(client, waiting);
-        client->publish_packet_id++; // TODO: MT safety
+
+        smqtt_mt_status_t stat =
+                enqueue_slot_for_send(client, slot, actual_len);
+
+        if (stat != SMQTT_MT_OK) {
+            return stat;
+        }
+    }
+    return SMQTT_MT_OK;
+}
+
+smqtt_mt_status_t
+smqtt_mt_unsubscribe(
+        smqtt_mt_client_t *client,
+        uint8_t topic_count,
+        const char **topics,
+        void (*callback)(bool, void *),
+        void *cb_context)
+{
+    if (!client->connected) {
+        return SMQTT_MT_NOT_CONNECTED;
+    } else {
+        uint8_t *buffer;
+        uint16_t slot;
+        slot = get_buffer_slot(client, &buffer);
+        size_t actual_len =
+                make_unsubscribe_message(buffer, BUFFER_SIZE,
+                                       client->subscribe_packet_id,
+                                       topic_count, topics);
+        client->subscribe_packet_id++; // TODO: MT safety
+
+        waiting_t *waiting = malloc(sizeof(waiting_t));
+        waiting->type = SUBACK;
+        waiting->callback = callback;
+        waiting->cb_context = cb_context;
+        waiting->unsuback_data.packet_id = client->publish_packet_id;
+        enqueue_waiting(client, waiting);
 
         smqtt_mt_status_t stat =
                 enqueue_slot_for_send(client, slot, actual_len);

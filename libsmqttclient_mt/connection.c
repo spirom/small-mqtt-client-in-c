@@ -97,6 +97,13 @@ dequeue_by_type_and_id(
                             return true;
                         }
                         break;
+                    case PUBREL:
+                        if (curr_waiting->pubrel_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        break;
                     case PINGRESP:
                         *waiting = curr_waiting;
                         remove_from_queue(queue, curr_entry);
@@ -108,6 +115,13 @@ dequeue_by_type_and_id(
                             return true;
                         }
                         return true;
+                    case UNSUBACK:
+                        if (curr_waiting->unsuback_data.packet_id == packet_id) {
+                            *waiting = curr_waiting;
+                            remove_from_queue(queue, curr_entry);
+                            return true;
+                        }
+                        break;
                     default:
                         break;
                 }
@@ -160,8 +174,6 @@ start_session_thread(
             calloc(buffer_count, sizeof(buffer_slot_t));
     for (slot_index_t i = 0; i < buffer_count; i++) {
         buffer_slot_t *slot = &client->buffer_slots[i];
-        //slot->callback = NULL;
-        //slot->cb_context = NULL;
         slot->buffer = malloc(buffer_size);
         slot_index_rec_t *rec = malloc(sizeof(slot_index_rec_t));
         rec->index = i;
@@ -206,6 +218,61 @@ join_session_thread(smqtt_mt_client_t *client)
 
     free(client);
 }
+
+void maybe_deliver_message(smqtt_mt_client_t *client, response_t *response)
+{
+    if (client->msg_callback != NULL) {
+        uint16_t topic_size =
+                response->body.publish_data.topic_size;
+        char *topic = malloc(topic_size + 1);
+        strncpy(topic,
+                response->body.publish_data.topic,
+                response->body.publish_data.topic_size);
+        topic[topic_size] = '\0';
+        uint16_t message_size =
+                response->body.publish_data.message_size;
+        char *message = malloc(
+                message_size + 1);
+        strncpy(message,
+                response->body.publish_data.message,
+                response->body.publish_data.message_size);
+        message[message_size] = '\0';
+        client->msg_callback(
+                topic,
+                message,
+                response->body.publish_data.qos,
+                response->body.publish_data.retain,
+                client->msg_cb_context);
+    }
+}
+
+static char *
+copy_publish_topic(response_t *response)
+{
+    uint16_t topic_size =
+            response->body.publish_data.topic_size;
+    char *topic = malloc(topic_size + 1);
+    strncpy(topic,
+            response->body.publish_data.topic,
+            response->body.publish_data.topic_size);
+    topic[topic_size] = '\0';
+    return topic;
+}
+
+static char *
+copy_publish_msg(response_t *response)
+{
+    uint16_t message_size =
+            response->body.publish_data.message_size;
+    char *message = malloc(
+            message_size + 1);
+    strncpy(message,
+            response->body.publish_data.message,
+            response->body.publish_data.message_size);
+    message[message_size] = '\0';
+    return message;
+}
+
 
 void *
 session_thread_loop(void *arg)
@@ -298,8 +365,6 @@ session_thread_loop(void *arg)
                     if (found) {
                         // no locking needed for this part as we are using the
                         // private buffer
-
-
                         size_t actual_len =
                                 make_pubrel_message(
                                         client->receive_buffer,
@@ -321,6 +386,7 @@ session_thread_loop(void *arg)
                         }
                     }
                 }
+                    break;
                 case PUBCOMP: {
                     // QoS2 case part 2: finally do the callback
                     waiting_t *waiting;
@@ -356,41 +422,126 @@ session_thread_loop(void *arg)
                                 waiting->cb_context);
                         free(waiting);
                     }
+                    break;
                 }
+                case UNSUBACK: {
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&client->thread_mutex);
+                    bool found = dequeue_by_type_and_id(
+                            &client->ack_queue,
+                            UNSUBACK,
+                            resp->body.unsuback_data.packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
+                    if (found && (waiting->callback != NULL)) {
+                        waiting->callback(
+                                true,
+                                waiting->cb_context);
+                        free(waiting);
+                    }
+                    break;
+                }
+
                 case PUBLISH: {
                     // only deliver if this is the QoS0 case
                     switch (resp->body.publish_data.qos) {
                         case QoS0:
-                            if (client->msg_callback != NULL) {
-                                uint16_t topic_size =
-                                        resp->body.publish_data.topic_size;
-                                char *topic = malloc(topic_size + 1);
-                                strncpy(topic,
-                                        resp->body.publish_data.topic,
-                                        resp->body.publish_data.topic_size);
-                                topic[topic_size] = '\0';
-                                uint16_t message_size =
-                                        resp->body.publish_data.message_size;
-                                char *message = malloc(
-                                        message_size + 1);
-                                strncpy(message,
-                                        resp->body.publish_data.message,
-                                        resp->body.publish_data.message_size);
-                                topic[topic_size] = '\0';
-                                client->msg_callback(
-                                        topic,
-                                        message,
-                                        resp->body.publish_data.qos,
-                                        resp->body.publish_data.retain,
-                                        client->msg_cb_context);
-                            }
+                            maybe_deliver_message(client, resp);
                             break;
-                        case QoS1:
+                        case QoS1: {
+                            uint16_t packet_id = resp->body.publish_data.packet_id;
+                            size_t actual_len =
+                                    make_puback_message(
+                                            client->receive_buffer,
+                                            client->buffer_size,
+                                            packet_id);
+                            smqtt_mt_status_t stat =
+                                    status_from_net(
+                                            server_send(
+                                                    client->server,
+                                                    client->receive_buffer,
+                                                    actual_len));
+                            if (stat == SMQTT_MT_OK) {
+                                // TODO: squirrel away for possible resend
+                                maybe_deliver_message(client, resp);
+                            }
+
+                        }
                             break;
                         case QoS2:
+                        {
+                            uint16_t packet_id = resp->body.publish_data.packet_id;
+                            size_t actual_len =
+                                    make_pubrec_message(
+                                            client->receive_buffer,
+                                            client->buffer_size,
+                                            packet_id);
+                            smqtt_mt_status_t stat =
+                                    status_from_net(
+                                            server_send(
+                                                    client->server,
+                                                    client->receive_buffer,
+                                                    actual_len));
+                            if (stat == SMQTT_MT_OK) {
+                                // TODO: squirrel away for possible resend
+                                // TODO: enqueue for later PUBREL matching
+                                waiting_t *waiting =
+                                        (waiting_t *) malloc(sizeof(waiting_t));
+                                waiting->type = PUBREL;
+                                waiting->callback = NULL;
+                                waiting->cb_context = NULL;
+                                waiting->pubrel_data.topic =
+                                        copy_publish_topic(resp);
+                                waiting->pubrel_data.msg =
+                                        copy_publish_msg(resp);
+                                waiting->pubrel_data.retain =
+                                    resp->body.publish_data.retain;
+                                waiting->pubrel_data.packet_id = packet_id;
+                                enqueue_waiting(client, waiting);
+                                // don't deliver yet -- do that on PUBREL
+                            }
+
+                        }
                             break;
                         default:
                             break;
+                    }
+                }
+                    break;
+                case PUBREL: {
+                    waiting_t *waiting;
+                    status = pthread_mutex_lock(&client->thread_mutex);
+                    uint16_t packet_id = resp->body.pubrel_data.packet_id;
+                    bool found = dequeue_by_type_and_id(
+                            &client->ack_queue,
+                            PUBREL,
+                            packet_id,
+                            &waiting);
+                    status = pthread_mutex_unlock(&client->thread_mutex);
+                    if (found) {
+                        // no locking needed for this part as we are using the
+                        // private buffer
+                        size_t actual_len =
+                                make_pubcomp_message(
+                                        client->receive_buffer,
+                                        client->buffer_size,
+                                        packet_id);
+                        smqtt_mt_status_t stat =
+                                status_from_net(
+                                        server_send(
+                                                client->server,
+                                                client->receive_buffer,
+                                                actual_len));
+                        if (stat == SMQTT_MT_OK) {
+                            if (client->msg_callback != NULL) {
+                                client->msg_callback(
+                                        waiting->pubrel_data.topic,
+                                        waiting->pubrel_data.msg,
+                                        QoS2, // or we wouldn't be here
+                                        waiting->pubrel_data.retain,
+                                        client->msg_cb_context);
+                            }
+                        }
                     }
                 }
                     break;

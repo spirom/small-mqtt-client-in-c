@@ -1,12 +1,7 @@
 
 # TODO
 
-* do-while macro fixup
-* messages probably shouldn't always be null terminated
-* get actual messages using two connections
-    * QoS1 messagea
-    * QoS2 messages
-    * Mixed QoS
+* messages probably shouldn't always be null terminated (not always text)
 * unsubscribe
     * simple
     * full
